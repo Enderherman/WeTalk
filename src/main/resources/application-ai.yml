@@ -1,0 +1,5 @@
+#仅本地使用，不提交仓库”，否则很容易被误当成普通配置
+spring:
+  ai:
+    openai:
+      api-key: sk-ca5e23dba921425183e72b0cdf77ce70
