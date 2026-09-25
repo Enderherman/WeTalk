@@ -1,7 +1,6 @@
 package top.enderherman.wetalk.controller;
 
 import com.wf.captcha.ArithmeticCaptcha;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,7 +30,6 @@ import java.util.HashMap;
 import java.util.UUID;
 
 
-@Slf4j
 @Validated
 @RestController
 @RequestMapping("/account")
@@ -79,7 +77,6 @@ public class UserInfoController extends ABaseController {
                                     @NotNull String nickName,
                                     @NotNull String checkCode) {
         try {
-            log.info("用户注册:\n 邮箱:{}\n 昵称:{}\n 密码:{}\n 验证码存储id:{}\n 验证码:{}\n", email, nickName, password, checkCodeKey, checkCode);
             if (!checkCode.equalsIgnoreCase((String) redisUtils.get(Constants.REDIS_KEY_CHECK_CODE + checkCodeKey))) {
                 throw new BusinessException("图片验证码错误");
             }
@@ -99,7 +96,6 @@ public class UserInfoController extends ABaseController {
                                  @NotNull String checkCode) {
         try {
             if (!checkCode.equalsIgnoreCase((String) redisUtils.get(Constants.REDIS_KEY_CHECK_CODE + checkCodeKey))) {
-                log.info("用户注册:\n 邮箱:{}\n 密码:{}\n 验证码存储id:{}\n 验证码:{}\n", email, password, checkCodeKey, checkCode);
                 throw new BusinessException("图片验证码错误");
             }
             UserInfoVO userInfoVO = userInfoService.login(email, password);
