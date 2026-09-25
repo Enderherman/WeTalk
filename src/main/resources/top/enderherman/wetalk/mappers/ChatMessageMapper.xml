@@ -46,6 +46,9 @@
         <if test="query.messageId != null">
             and message_id = #{query.messageId}
         </if>
+        <if test="query.beforeMessageId != null">
+            and message_id &lt; #{query.beforeMessageId}
+        </if>
         <if test="query.sessionId != null and query.sessionId!=''">
             and session_id = #{query.sessionId}
         </if>

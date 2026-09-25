@@ -15,6 +15,7 @@ import top.enderherman.wetalk.entity.dto.MessageSendDTO;
 import top.enderherman.wetalk.entity.dto.TokenUserInfoDto;
 import top.enderherman.wetalk.entity.enums.MessageTypeEnum;
 import top.enderherman.wetalk.entity.po.ChatMessage;
+import top.enderherman.wetalk.entity.vo.PaginationResultVO;
 import top.enderherman.wetalk.exception.BusinessException;
 import top.enderherman.wetalk.service.ChatMessageService;
 import top.enderherman.wetalk.utils.StringUtils;
@@ -24,6 +25,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
+import javax.validation.constraints.Min;
+import javax.validation.constraints.Max;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -67,6 +70,19 @@ public class ChatController extends ABaseController {
         chatMessage.setFileSize(fileSize);
         MessageSendDTO<?> messageSendDTO = chatMessageService.saveMessage(chatMessage, tokenUserInfoDto);
         return BaseResponse.success(messageSendDTO);
+    }
+
+    /**
+     * 按游标读取一对一或群聊历史消息。
+     */
+    @GlobalInterceptor
+    @PostMapping("/loadHistory")
+    public BaseResponse<PaginationResultVO<ChatMessage>> loadHistory(HttpServletRequest request,
+                                                                     @NotNull String contactId,
+                                                                     @Min(1) Integer beforeMessageId,
+                                                                     @Min(1) @Max(50) Integer pageSize) {
+        TokenUserInfoDto tokenUserInfoDto = getTokenUserDto(request);
+        return BaseResponse.success(chatMessageService.loadHistory(tokenUserInfoDto, contactId, beforeMessageId, pageSize));
     }
 
     /**

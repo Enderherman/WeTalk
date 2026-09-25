@@ -32,6 +32,9 @@ public interface ChatMessageService {
 	 */
 	PaginationResultVO<ChatMessage> findListByPage(ChatMessageQuery param);
 
+	/** 按联系人读取当前用户可访问的历史消息 */
+	PaginationResultVO<ChatMessage> loadHistory(TokenUserInfoDto userInfo, String contactId, Integer beforeMessageId, Integer pageSize);
+
 	/**
 	 * 新增
 	 */

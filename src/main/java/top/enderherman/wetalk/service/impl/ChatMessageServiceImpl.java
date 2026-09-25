@@ -35,6 +35,7 @@ import top.enderherman.wetalk.webSocket.MessageHandler;
 import jakarta.annotation.Resource;
 
 import java.io.File;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 
@@ -96,6 +97,36 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         param.setSimplePage(page);
         List<ChatMessage> list = this.findListByParam(param);
         PaginationResultVO<ChatMessage> result = new PaginationResultVO(count, page.getPageSize(), page.getPageNo(), page.getPageTotal(), list);
+        return result;
+    }
+
+    /**
+     * 按游标读取当前用户可以访问的会话历史，返回顺序统一为从旧到新。
+     */
+    @Override
+    public PaginationResultVO<ChatMessage> loadHistory(TokenUserInfoDto userInfo, String contactId, Integer beforeMessageId, Integer pageSize) {
+        UserContactTypeEnum contactType = UserContactTypeEnum.getByPrefix(contactId);
+        if (contactType == null) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
+        List<String> userContactList = redisComponent.getUserContactList(userInfo.getUserId());
+        if (userContactList == null || !userContactList.contains(contactId)) {
+            throw new BusinessException(contactType == UserContactTypeEnum.USER
+                    ? ResponseCodeEnum.CODE_902
+                    : ResponseCodeEnum.CODE_903);
+        }
+
+        String sessionId = contactType == UserContactTypeEnum.USER
+                ? StringUtils.getChatSessionId4User(new String[]{userInfo.getUserId(), contactId})
+                : StringUtils.getChatSessionId4Group(contactId);
+        ChatMessageQuery query = new ChatMessageQuery();
+        query.setSessionId(sessionId);
+        query.setBeforeMessageId(beforeMessageId);
+        query.setOrderBy("message_id desc");
+        query.setPageNo(1);
+        query.setPageSize(pageSize == null ? 30 : Math.min(pageSize, 50));
+        PaginationResultVO<ChatMessage> result = findListByPage(query);
+        Collections.reverse(result.getList());
         return result;
     }
 

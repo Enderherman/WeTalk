@@ -17,6 +17,9 @@ public class ChatMessageQuery extends BaseParam {
      */
     private Integer messageId;
 
+    /** 查询此消息之前的历史记录 */
+    private Integer beforeMessageId;
+
     /**
      * 会话id
      */
