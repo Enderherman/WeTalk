@@ -66,12 +66,12 @@ public class RedisComponent {
      * 先删 dto 再删 Token
      */
     public void clearTokenUserInfoDto(String userId) {
-        String token = (String) redisUtils.get(Constants.REDIS_KEY_WS_TOKEN + userId);
-        if (token == null) {
-            return;
+        String userTokenKey = Constants.REDIS_KEY_WS_TOKEN_USERID + userId;
+        String token = (String) redisUtils.get(userTokenKey);
+        if (token != null) {
+            redisUtils.delete(Constants.REDIS_KEY_WS_TOKEN + token);
         }
-        redisUtils.delete(Constants.REDIS_KEY_WS_TOKEN + token);
-        redisUtils.delete(Constants.REDIS_KEY_WS_TOKEN_USERID + userId);
+        redisUtils.delete(userTokenKey);
     }
 
     /**
