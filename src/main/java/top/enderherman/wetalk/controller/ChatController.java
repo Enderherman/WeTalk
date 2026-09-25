@@ -22,8 +22,8 @@ import top.enderherman.wetalk.utils.StringUtils;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import javax.validation.constraints.Max;
 import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Size;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -48,7 +48,7 @@ public class ChatController extends ABaseController {
     @PostMapping("/sendMessage")
     public BaseResponse<MessageSendDTO<?>> sendMessage(HttpServletRequest request,
                                                        @NotNull String contactId,
-                                                       @NotNull @Max(500) String messageContent,
+                                                       @NotNull @Size(max = 500) String messageContent,
                                                        @NotNull Integer messageType,
                                                        Long fileSize,
                                                        String fileName,
