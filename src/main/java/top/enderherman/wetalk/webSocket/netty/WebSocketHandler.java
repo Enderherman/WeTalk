@@ -66,14 +66,15 @@ public class WebSocketHandler extends SimpleChannelInboundHandler<TextWebSocketF
         if (evt instanceof WebSocketServerProtocolHandler.HandshakeComplete) {
             WebSocketServerProtocolHandler.HandshakeComplete complete = (WebSocketServerProtocolHandler.HandshakeComplete) evt;
             String url = complete.requestUri();
-            log.info("url:{}", url);
             String token = getToken(url);
-            if (token == null) {
+            if (StringUtils.isEmpty(token)) {
+                log.warn("WebSocket 握手缺少认证令牌");
                 ctx.channel().close();
+                return;
             }
-            log.info("token:{}", token);
             TokenUserInfoDto tokenUserInfoDto = redisComponent.getTokenUserInfoDto(token);
             if (tokenUserInfoDto == null) {
+                log.warn("WebSocket 握手认证失败");
                 ctx.channel().close();
                 return;
             }
