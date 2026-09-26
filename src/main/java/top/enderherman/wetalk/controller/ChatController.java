@@ -19,6 +19,7 @@ import top.enderherman.wetalk.entity.po.ChatMessage;
 import top.enderherman.wetalk.entity.vo.PaginationResultVO;
 import top.enderherman.wetalk.exception.BusinessException;
 import top.enderherman.wetalk.service.ChatMessageService;
+import top.enderherman.wetalk.service.RateLimitService;
 import top.enderherman.wetalk.utils.StringUtils;
 
 import jakarta.annotation.Resource;
@@ -46,6 +47,9 @@ public class ChatController extends ABaseController {
     @Resource
     private ChatMessageService chatMessageService;
 
+    @Resource
+    private RateLimitService rateLimitService;
+
     /**
      * 发送消息
      */
@@ -63,6 +67,7 @@ public class ChatController extends ABaseController {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
         TokenUserInfoDto tokenUserInfoDto = getTokenUserDto(request);
+        rateLimitService.enforce("chat-send", tokenUserInfoDto.getUserId(), 120, 60);
         ChatMessage chatMessage = new ChatMessage();
         chatMessage.setContactId(contactId);
         chatMessage.setMessageContent(messageContent);

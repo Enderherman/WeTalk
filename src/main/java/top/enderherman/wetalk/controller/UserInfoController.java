@@ -18,6 +18,7 @@ import top.enderherman.wetalk.entity.vo.UserInfoVO;
 import top.enderherman.wetalk.entity.vo.WebSessionVO;
 import top.enderherman.wetalk.exception.BusinessException;
 import top.enderherman.wetalk.service.UserInfoService;
+import top.enderherman.wetalk.service.RateLimitService;
 import top.enderherman.wetalk.utils.CopyUtils;
 import top.enderherman.wetalk.utils.RedisUtils;
 import top.enderherman.wetalk.utils.StringUtils;
@@ -49,6 +50,9 @@ public class UserInfoController extends ABaseController {
 
     @Resource
     private UserInfoService userInfoService;
+
+    @Resource
+    private RateLimitService rateLimitService;
 
     @Resource
     private ChannelContextUtils channelContextUtils;
@@ -85,6 +89,7 @@ public class UserInfoController extends ABaseController {
                                     @NotNull String nickName,
                                     @NotNull String checkCode) {
         try {
+            rateLimitService.enforce("account-register", email, 5, 3600);
             if (!checkCode.equalsIgnoreCase((String) redisUtils.get(Constants.REDIS_KEY_CHECK_CODE + checkCodeKey))) {
                 throw new BusinessException("图片验证码错误");
             }
@@ -103,6 +108,7 @@ public class UserInfoController extends ABaseController {
 
                                  @NotNull String checkCode) {
         try {
+            rateLimitService.enforce("account-login", email, 10, 600);
             if (!checkCode.equalsIgnoreCase((String) redisUtils.get(Constants.REDIS_KEY_CHECK_CODE + checkCodeKey))) {
                 throw new BusinessException("图片验证码错误");
             }
@@ -123,6 +129,7 @@ public class UserInfoController extends ABaseController {
                                                @NotNull String password,
                                                @NotNull String checkCode) {
         try {
+            rateLimitService.enforce("account-login", email, 10, 600);
             validateCaptcha(checkCodeKey, checkCode);
             UserInfoVO userInfo = userInfoService.login(email, password);
             response.addHeader(HttpHeaders.SET_COOKIE,
@@ -137,6 +144,7 @@ public class UserInfoController extends ABaseController {
     @GlobalInterceptor
     public BaseResponse<?> createWebSocketTicket(HttpServletRequest request) {
         TokenUserInfoDto user = getTokenUserDto(request);
+        rateLimitService.enforce("websocket-ticket", user.getUserId(), 60, 60);
         String ticket = UUID.randomUUID().toString();
         redisComponent.saveWebSocketTicket(ticket, user);
         return getSuccessResponseVO(java.util.Map.of("ticket", ticket));

@@ -1,3 +1,9 @@
+## API 请求频率限制（2026-09-27）
+
+- 为注册、登录/Web 登录、WebSocket ticket 和聊天消息发送增加 Redis Lua 原子固定窗口限流；计数键使用身份摘要，避免把邮箱或用户编号写入 Redis 键。
+- 超限返回业务码 429；Redis 计数器不可用时请求失败关闭。
+- Maven clean verify 67 项测试通过；真实后端验证同账号每分钟前 60 个 ticket 成功、第 61 个返回 429，测试账号、ticket、限流计数和关联记录已清理。
+
 ## WebSocket Origin 白名单（2026-09-27）
 
 - 浏览器 WebSocket 握手只接受 WETALK_WEB_ALLOWED_ORIGINS 中的 Origin；Origin: null 仅对旧 token 客户端兼容，不接受一次性 ticket。

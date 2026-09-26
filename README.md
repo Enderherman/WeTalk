@@ -95,6 +95,10 @@ Spring Boot 不会自动读取本地 .env；本地直接运行 Java 时要由终
 
 启用 AI 需同时设置 WETALK_AI_ENABLED=true 和 WETALK_AI_MODEL=openai，再填写 model、base URL、API Key。普通聊天部署保持 false/none。此行为通过 Spring AI 自动配置测试验证，不使用伪造 API Key。
 
+### 请求频率限制
+
+后端使用 Redis Lua 原子计数并为计数器设置过期时间；Redis 键只保存 SHA-256 身份摘要。默认每个规范化邮箱注册最多 5 次/小时、登录和 Web 登录合计 10 次/10 分钟；每个账号申请 WebSocket ticket 最多 60 次/分钟，发送聊天消息最多 120 次/分钟。超限返回业务码 429 和“请求过于频繁”提示；Redis 不可用时相关请求失败关闭。
+
 
 ### 网页 AI 流式回复与停止
 
