@@ -323,6 +323,7 @@ public class GroupInfoServiceImpl implements GroupInfoService {
         if (count == 0) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
+        chatSessionUserMapper.deleteByUserIdAndContactId(userId, groupId);
         UserInfo user = userInfoMapper.selectByUserId(userId);
         String sessionId = StringUtils.getChatSessionId4Group(groupId);
         Date curTime = new Date();
@@ -380,6 +381,10 @@ public class GroupInfoServiceImpl implements GroupInfoService {
         UserContact userContact = new UserContact();
         userContact.setStatus(UserContactStatusEnum.DEL.getStatus());
         userContactMapper.updateByParam(userContact, userContactQuery);
+
+        ChatSessionUserQuery chatSessionUserQuery = new ChatSessionUserQuery();
+        chatSessionUserQuery.setContactId(groupId);
+        chatSessionUserMapper.deleteByParam(chatSessionUserQuery);
 
         //移除相关联系人缓存
         List<UserContact> userContactList = userContactMapper.selectList(userContactQuery);
