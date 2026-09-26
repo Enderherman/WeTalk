@@ -297,14 +297,16 @@ public class UserInfoServiceImpl implements UserInfoService {
         userInfo.setCreateTime(null);
         userInfo.setLastLoginTime(null);
         userInfo.setLastOffTime(null);
-        if (avatarFile != null) {
+        validateProfileImage(avatarFile);
+        validateProfileImage(avatarCoverFile);
+        if (avatarFile != null || avatarCoverFile != null) {
             String baseFolder = appConfig.getProjectFolder() + Constants.FILE_FOLDER;
             File targetFileFolder = new File(baseFolder + Constants.AVATAR_FOLDER);
             if (!targetFileFolder.exists()) {
                 targetFileFolder.mkdirs();
             }
             String filePath = targetFileFolder.getPath() + "/" + userInfo.getUserId() + Constants.IMAGE_SUFFIX;
-            avatarFile.transferTo(new File(filePath));
+            if (avatarFile != null) avatarFile.transferTo(new File(filePath));
             if (avatarCoverFile != null) {
                 avatarCoverFile.transferTo(new File(filePath + Constants.COVER_IMAGE_SUFFIX));
             }
@@ -330,6 +332,29 @@ public class UserInfoServiceImpl implements UserInfoService {
 
         chatSessionUserService.updateRedundancyInfo(contactNameUpdate, userInfo.getUserId());
 
+    }
+
+    private void validateProfileImage(MultipartFile file) {
+        if (file == null) return;
+        if (file.isEmpty() || file.getSize() > 10 * Constants.FILE_SIZE_MB) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
+        String fileName = file.getOriginalFilename();
+        String contentType = file.getContentType();
+        if (fileName == null || contentType == null) throw new BusinessException(ResponseCodeEnum.CODE_600);
+        int dot = fileName.lastIndexOf('.');
+        String extension = dot < 0 ? "" : fileName.substring(dot + 1).toLowerCase();
+        String expectedType = switch (extension) {
+            case "png" -> "image/png";
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "gif" -> "image/gif";
+            case "bmp" -> "image/bmp";
+            case "webp" -> "image/webp";
+            default -> null;
+        };
+        if (expectedType == null || !expectedType.equalsIgnoreCase(contentType)) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
     }
 
     /**

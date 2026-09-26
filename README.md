@@ -11,6 +11,7 @@ WeTalk 是 App 和 Web 共用的 Java 17 / Spring Boot 聊天服务。后端提�
 | 就绪检查 | GET /api/actuator/health/readiness |
 | 健康检查 | GET /api/actuator/health |
 | 登录态 | Web 使用 HttpOnly Cookie；Electron 兼容 token 请求头；失败业务码 901 |
+| 用户资料图片 | 头像/封面接受 PNG、JPEG、GIF、BMP、WebP；每个文件最多 10 MiB |
 | 返回值 | status、code、message、data；客户端按业务 code 判断结果 |
 | 账号注册 | 邮箱、密码、昵称、图片验证码；目前没有邮箱归属验证 |
 | AI | 默认不启用，无 AI 密钥也能启动普通聊天 |
