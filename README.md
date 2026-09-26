@@ -31,7 +31,7 @@ WeTalk 是 App 和 Web 共用的 Java 17 / Spring Boot 聊天服务。后端提�
 - 可写的文件目录，重启容器时必须保留。
 - AI 使用 OpenAI 兼容接口时，还需要相应 provider/model/API Key。
 
-**当前仓库没有官方数据库建表/初始化 SQL。** 本次没有猜测表结构或创建空 MySQL 容器。NAS 部署前须从正在使用的数据库或原毕设资料获得完整 schema/初始化数据并确认；否则“数据库连接成功”不代表注册和聊天可用。备份已有 MySQL 和文件目录后再做后续迁移。
+sql/001-schema.sql 已从本机实际使用的 MySQL 8.0.31 easychat 导出，包含 9 张业务表的字段、索引和字符集，不含用户、密码摘要、聊天记录等私有数据。它只用于空数据库初始化，不是已有数据库升级脚本；参见 [SQL 说明](sql/README.md)。演示账号和管理员账号另行创建，旧数据库/文件的数据迁移需单独备份处理。
 
 本项目没有 Maven Wrapper，下面使用安装好的 mvn。
 
@@ -75,6 +75,37 @@ Spring Boot 不会自动读取本地 .env；本地直接运行 Java 时要由终
 启用 AI 需同时设置 WETALK_AI_ENABLED=true 和 WETALK_AI_MODEL=openai，再填写 model、base URL、API Key。普通聊天部署保持 false/none。此行为通过 Spring AI 自动配置测试验证，不使用伪造 API Key。
 
 ## NAS Docker 部署准备
+
+### 独立 MySQL / Redis 基础容器
+
+compose.infra.yaml 用官方 MySQL 8.4、Redis 7.4 创建两个独立容器，分别名为 wetalk-mysql 和 wetalk-redis。它们共用 wetalk-net 网络，数据保存在该专用目录的 data/mysql 和 data/redis。
+
+准备脚本会随机生成独立的 MySQL root 密码、应用数据库密码和 Redis 密码；密码保存在 .env、secrets/ 和 config/redis.conf，不会打印或提交到 Git。MySQL root 限制为本机登录，应用账号 wetalk 仅用于 easychat 数据库。默认发布地址是 127.0.0.1，需要局域网开发时显式指定 NAS 的 LAN IP。
+
+~~~shell
+cd /volume2/docker/wetalk
+python3 scripts/prepare_infra.py --bind-ip 192.168.31.108
+sudo chown 999:999 config/redis.conf
+sudo docker compose -f compose.infra.yaml config --quiet
+sudo docker compose -f compose.infra.yaml up -d
+sudo docker compose -f compose.infra.yaml ps
+~~~
+
+默认 NAS 侧端口为 MySQL 13306、Redis 16379，以避开现有服务；实际启动前仍需核对端口。两者启用认证和持久化，MySQL 首次启动自动导入 sql/001-schema.sql。不要通过清空 data/mysql 重跑初始化；已有数据目录的升级需专门迁移脚本。
+
+生成配置拒绝覆盖已有 .env/secrets/config，避免意外轮换凭据。Redis 配置文件必须由容器 UID/GID 999 读取；父目录和 .env 保持私有权限。同一网络中的后端用 wetalk-mysql:3306、wetalk-redis:6379；从本机开发工具连接 NAS 用 192.168.31.108:13306 / 16379。
+
+本次只要求创建两个基础容器。后端镜像可以先构建，之后确认时再用 compose.yaml + compose.nas.yaml 接入：
+
+~~~shell
+sudo docker build -t wetalk-backend:0.0.2 .
+# 后续启动后端时才执行：
+sudo docker compose -f compose.yaml -f compose.nas.yaml up -d
+~~~
+
+prepare_infra.py 为后续后端预留 NAS 发布端口 15050/15051，避免碰本机已有 5050/5051 服务；它不会自行启动第三个容器。
+
+### 单独后端容器
 
 这里是下一步部署操作说明，本次打包不等于已部署到 NAS。
 
@@ -123,4 +154,4 @@ Dockerfile 使用官方 [Eclipse Temurin](https://hub.docker.com/_/eclipse-temur
 - 当前密码协议仍兼容 App/Web 的历史 MD5 登录摘要；升级 BCrypt/Argon2 和邮箱验证必须协调客户端及已有账号迁移。
 - 管理员角色仍按可信邮箱名单配置，后续宜加入数据库角色和邮箱验证。
 - 客户端引用 /api/app/downloadUpdate，但当前后端没有该映射；桌面自动安装更新流程仍需补齐，普通聊天部署不依赖它。
-- 网络 Redis/MySQL、NAS Docker 镜像运行和端到端 App/Web 尚须部署后验证。
+- SQL 初始化不含本机历史数据；MySQL/Redis 容器部署结果和 App/Web 端到端验证需记录实际结果。

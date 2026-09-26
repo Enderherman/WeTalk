@@ -1,0 +1,9 @@
+# Optional backend override. Infrastructure must be running first.
+services:
+  wetalk:
+    networks:
+      - wetalk
+networks:
+  wetalk:
+    external: true
+    name: wetalk-net

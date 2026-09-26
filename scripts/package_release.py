@@ -34,6 +34,8 @@ def sha(data):
 files = {
     name: (ROOT / name).read_bytes()
     for name in ("target/wetalk.jar", "Dockerfile", "compose.yaml",
+                 "compose.infra.yaml", "compose.nas.yaml", "sql/001-schema.sql",
+                 "scripts/prepare_infra.py",
                  ".env.example", "README.md", "CHANGELOG.md")
 }
 commit = subprocess.check_output(
@@ -48,7 +50,7 @@ info = {
     "packagedAt": datetime.now(timezone.utc).isoformat(),
     "tests": totals, "jarSha256": sha(files["target/wetalk.jar"]),
     "baseImage": "eclipse-temurin:17-jre-jammy",
-    "dockerImageIncluded": False, "databaseSchemaIncluded": False,
+    "dockerImageIncluded": False, "databaseSchemaIncluded": True,
 }
 files["RELEASE.json"] = json.dumps(info, ensure_ascii=False, indent=2).encode()
 files["SHA256SUMS"] = "".join(

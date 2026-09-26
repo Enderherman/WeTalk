@@ -1,0 +1,64 @@
+name: wetalk-infra
+services:
+  mysql:
+    image: ${MYSQL_IMAGE:-mysql:8.4}
+    container_name: wetalk-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: easychat
+      MYSQL_USER: wetalk
+      MYSQL_ROOT_HOST: localhost
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql-root-password
+      MYSQL_PASSWORD_FILE: /run/secrets/mysql-password
+      TZ: Asia/Shanghai
+    secrets:
+      - mysql-root-password
+      - mysql-password
+      - mysql-client
+    ports:
+      - "${NAS_BIND_IP:-127.0.0.1}:${MYSQL_PUBLISHED_PORT:-13306}:3306"
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+      - ./sql:/docker-entrypoint-initdb.d:ro
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --innodb-buffer-pool-size=128M
+      - --max-connections=50
+    healthcheck:
+      test: ["CMD-SHELL", "mysql --defaults-extra-file=/run/secrets/mysql-client --database=easychat --execute='SELECT 1' >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 90s
+    mem_limit: 1g
+  redis:
+    image: ${REDIS_IMAGE:-redis:7.4-alpine}
+    container_name: wetalk-redis
+    restart: unless-stopped
+    command: ["redis-server", "/etc/redis/wetalk.conf"]
+    secrets:
+      - redis-password
+    ports:
+      - "${NAS_BIND_IP:-127.0.0.1}:${REDIS_PUBLISHED_PORT:-16379}:6379"
+    volumes:
+      - ./data/redis:/data
+      - ./config/redis.conf:/etc/redis/wetalk.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$(cat /run/secrets/redis-password) redis-cli --no-auth-warning ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    mem_limit: 256m
+networks:
+  default:
+    name: wetalk-net
+secrets:
+  mysql-root-password:
+    file: ./secrets/mysql-root-password
+  mysql-password:
+    file: ./secrets/mysql-password
+  mysql-client:
+    file: ./secrets/mysql-client.cnf
+  redis-password:
+    file: ./secrets/redis-password
