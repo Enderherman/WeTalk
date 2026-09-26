@@ -4,6 +4,7 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
 import io.netty.util.Attribute;
@@ -29,6 +30,9 @@ public class WebSocketHandler extends SimpleChannelInboundHandler<TextWebSocketF
 
     @Resource
     private ChannelContextUtils channelContextUtils;
+
+    @Resource
+    private WebSocketOriginValidator originValidator;
 
     /**
      * 通道就绪后 调用 一般用来做初始化
@@ -70,6 +74,12 @@ public class WebSocketHandler extends SimpleChannelInboundHandler<TextWebSocketF
         if (evt instanceof WebSocketServerProtocolHandler.HandshakeComplete) {
             WebSocketServerProtocolHandler.HandshakeComplete complete = (WebSocketServerProtocolHandler.HandshakeComplete) evt;
             String url = complete.requestUri();
+            String origin = complete.requestHeaders().get(HttpHeaderNames.ORIGIN);
+            if (!originValidator.isAllowed(origin, url)) {
+                log.warn("WebSocket origin rejected");
+                ctx.channel().close();
+                return;
+            }
             TokenUserInfoDto tokenUserInfoDto = authenticate(url);
             if (tokenUserInfoDto == null) {
                 log.warn("WebSocket 握手缺少认证令牌");

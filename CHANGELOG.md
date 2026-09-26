@@ -1,3 +1,9 @@
+## WebSocket Origin 白名单（2026-09-27）
+
+- 浏览器 WebSocket 握手只接受 WETALK_WEB_ALLOWED_ORIGINS 中的 Origin；Origin: null 仅对旧 token 客户端兼容，不接受一次性 ticket。
+- 无 Origin 的原生 Electron 客户端继续兼容；生产部署需把允许列表设为网页 HTTPS Origin。
+- Maven clean verify 65 项测试通过，新增来源规范化、伪造来源拒绝和旧客户端兼容测试。真实后端原始握手验证伪造 Origin 收到 close 帧且无应用数据、ticket 可由允许来源继续消费，以及 Origin: null 的 Electron token 连接仍收到 INIT。
+
 ## 灰度更新身份校验与网页版本提示（2026-09-27）
 
 - `/app/checkUpdate` 继续兼容旧版 uid 参数，但灰度资格改由认证会话中的用户编号判断，避免伪造其他用户 ID 查看灰度发布信息。

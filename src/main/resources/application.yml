@@ -70,6 +70,7 @@ wetalk:
     enabled: ${WETALK_AI_ENABLED:false}
   web:
     auth-cookie-secure: ${WETALK_WEB_AUTH_COOKIE_SECURE:false}
+    allowed-origins: "${WETALK_WEB_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}"
 management:
   endpoints:
     web:

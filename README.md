@@ -16,7 +16,7 @@ WeTalk 是 App 和 Web 共用的 Java 17 / Spring Boot 聊天服务。后端提�
 | 账号注册 | 邮箱、密码、昵称、图片验证码；目前没有邮箱归属验证 |
 | AI | 默认不启用，无 AI 密钥也能启动普通聊天 |
 
-生产反向代理应使用 HTTPS/WSS，并保持 /api、/ws 两个路径；HTTPS 部署设 WETALK_WEB_AUTH_COOKIE_SECURE=true。健康接口仅返回 UP/DOWN，不公开配置或数据库详情；就绪检查同时检查 MySQL、Redis 和 WebSocket 是否成功绑定。
+生产反向代理应使用 HTTPS/WSS，并保持 /api、/ws 两个路径；HTTPS 部署设 WETALK_WEB_AUTH_COOKIE_SECURE=true，并将 WETALK_WEB_ALLOWED_ORIGINS 设为实际网页 Origin。健康接口仅返回 UP/DOWN，不公开配置或数据库详情；就绪检查同时检查 MySQL、Redis 和 WebSocket 是否成功绑定。
 
 ## 本次修复
 
@@ -83,6 +83,8 @@ Spring Boot 不会自动读取本地 .env；本地直接运行 Java 时要由终
 | REDIS_SSL | false；启用时 Spring 和 Redisson 都使用 TLS |
 | PROJECT_FOLDER | 本地 ./data/；Docker /data/wetalk/ |
 | WETALK_WEB_AUTH_COOKIE_SECURE | false 本地开发；HTTPS 部署必须设为 true，启用 HttpOnly/SameSite Strict 的 Web 会话 Cookie |
+| WETALK_WEB_ALLOWED_ORIGINS | 本地默认允许 localhost:5173 和 127.0.0.1:5173；生产设为网页 HTTPS Origin，多个来源用逗号分隔 |
+| WETALK_WEB_ALLOWED_ORIGINS | 本地默认允许 localhost:5173 和 127.0.0.1:5173；生产设为网页 HTTPS Origin，多个来源用逗号分隔 |
 | HTTP_PORT / WS_PORT | 5050 / 5051；Compose 固定内部端口 |
 | ADMIN_EMAILS | 默认为空；可信的现有管理员邮箱，以逗号分隔 |
 | MAX_UPLOAD_SIZE | 500MB，HTTP 与文件请求上限 |
@@ -166,6 +168,7 @@ Dockerfile 使用官方 [Eclipse Temurin](https://hub.docker.com/_/eclipse-temur
 - 当前 WeTalkWeb 默认相对 /api，WebSocket 使用页面同源 /ws。开发时在 WeTalkWeb/vite.config.ts 将 /api 和 /ws 的代理目标改为 NAS HTTP/WS 地址。
 - Web 的 VITE_API_BASE_URL 可配置 REST 基址，但 WebSocket 同源策略仍需 /ws 代理。生产建议反向代理统一域名，Web 静态页面、API 和 WebSocket 共用 HTTPS/WSS。
 - 本后端没有添加任意 Origin 的全局 CORS 放行；用同源代理即可保留权限边界。
+- Netty WebSocket 会校验浏览器 Origin，允许来源由 WETALK_WEB_ALLOWED_ORIGINS 配置；无 Origin 的原生客户端继续兼容，Origin 为 null 时仅放行旧 token 查询参数，不放行 WebSocket ticket。生产域名确定后应把允许列表设置为该精确 HTTPS Origin。
 - 消息通过 POST /api/chat/sendMessage 发送，通过 WebSocket 接收。历史分页接口为 POST /api/chat/loadHistory，参数 contactId、beforeMessageId、pageSize（1..50）。
 - 默认单账号单活跃连接；本次没有实现 App 与 Web 同账号同时在线。开发联调应使用两个不同测试账号，后续多端会话需要专门设计。
 
