@@ -93,6 +93,12 @@ Spring Boot 不会自动读取本地 .env；本地直接运行 Java 时要由终
 
 启用 AI 需同时设置 WETALK_AI_ENABLED=true 和 WETALK_AI_MODEL=openai，再填写 model、base URL、API Key。普通聊天部署保持 false/none。此行为通过 Spring AI 自动配置测试验证，不使用伪造 API Key。
 
+
+### 网页 AI 流式回复与停止
+
+AI 默认关闭。启用时设置 `WETALK_AI_ENABLED=true`、`WETALK_AI_MODEL=openai`，并填写 OpenAI 兼容提供方的 base URL、模型名和 API Key。Web 客户端向机器人 `Urobot` 发送问题后，WebSocket 类型 14/15/16 分别表示初始化、累计全文片段和结束；结束状态 1 为完成、2 为停止、3 为提供方失败。
+
+`POST /api/chat/cancelAiMessage` 接受正整数 `messageId`，只允许停止当前登录用户发起的 AI 回复。停止会取消提供方流并保存已生成文本；提供方错误也会保存已有文本并写入失败状态。服务器重启后遗留的空 AI 占位消息会在用户尝试停止时标为失败，避免永久等待。完整请求契约见 `WeTalkWeb/docs/openapi.web.json`。
 ## NAS Docker 部署准备
 
 ### 独立 MySQL / Redis 基础容器

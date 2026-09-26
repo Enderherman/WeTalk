@@ -74,6 +74,15 @@ public class ChatController extends ABaseController {
         return BaseResponse.success(messageSendDTO);
     }
 
+    /** 停止当前用户发起的 AI 回复。 */
+    @GlobalInterceptor
+    @PostMapping("/cancelAiMessage")
+    public BaseResponse<MessageSendDTO<?>> cancelAiMessage(HttpServletRequest request,
+                                                           @NotNull @Min(1) Integer messageId) {
+        TokenUserInfoDto tokenUserInfoDto = getTokenUserDto(request);
+        return BaseResponse.success(chatMessageService.cancelAiMessage(messageId, tokenUserInfoDto));
+    }
+
     /**
      * 按游标读取一对一或群聊历史消息。
      */

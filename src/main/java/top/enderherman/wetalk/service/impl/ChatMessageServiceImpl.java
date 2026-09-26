@@ -38,6 +38,11 @@ import java.io.File;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import reactor.core.Disposable;
 
 
 /**
@@ -46,6 +51,27 @@ import java.util.List;
 @Slf4j
 @Service("chatMessageService")
 public class ChatMessageServiceImpl implements ChatMessageService {
+
+    private final ConcurrentMap<Integer, AiStreamState> activeAiStreams = new ConcurrentHashMap<>();
+
+    private static final class AiStreamState {
+        private final Integer messageId;
+        private final String sessionId;
+        private final String contactId;
+        private final String robotId;
+        private final String robotNickName;
+        private final StringBuilder content = new StringBuilder();
+        private final AtomicBoolean finished = new AtomicBoolean(false);
+        private volatile Disposable disposable;
+
+        private AiStreamState(Integer messageId, String sessionId, String contactId, String robotId, String robotNickName) {
+            this.messageId = messageId;
+            this.sessionId = sessionId;
+            this.contactId = contactId;
+            this.robotId = robotId;
+            this.robotNickName = robotNickName;
+        }
+    }
 
     @Resource
     private ChatSessionMapper<ChatSession, ChatSessionQuery> chatSessionMapper;
@@ -294,58 +320,135 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             initSendDTO.setSendTime(System.currentTimeMillis());
             messageHandler.sendMessage(initSendDTO);
             // 使用流式响应处理AI回复
-            StringBuilder fullContent = new StringBuilder();
-            aiService.sendMsgFlow(messageContent)
-                    .subscribe(content -> {
-                        // 累积完整内容
-                        fullContent.append(content);
-                        // 创建流式消息
-                        MessageSendDTO<?> streamingMessage = new MessageSendDTO<>();
-                        streamingMessage.setMessageId(robotMessageId);
-                        streamingMessage.setSendTime(System.currentTimeMillis());
-                        streamingMessage.setMessageType(MessageTypeEnum.AI_CHAT_STREAM.getType());
-                        streamingMessage.setMessageContent(fullContent.toString());
-                        streamingMessage.setSessionId(robotSessionId);
-                        streamingMessage.setContactId(sendUserId);
-                        streamingMessage.setSendUserId(robot.getUserId());
-                        streamingMessage.setSendUserNickName(robot.getNickName());
-
-
-                        // 发送流式消息
-                        messageHandler.sendMessage(streamingMessage);
-                    }, error -> {
-                        log.error("AI流式响应错误", error);
-                    }, () -> {
-                        // 完成后更新最终消息内容和会话信息
-                        String finalContent = fullContent.toString();
-
-                        // 更新消息表
-                        ChatMessage completeMessage = new ChatMessage();
-                        completeMessage.setMessageContent(finalContent);
-                        chatMessageMapper.updateByMessageId(completeMessage, robotMessageId);
-
-                        // 更新会话表
-                        ChatSession chatSession1 = new ChatSession();
-                        chatSession1.setLastMessage(robot.getNickName() + ": " + finalContent);
-                        chatSession1.setLastReceiveTime(System.currentTimeMillis());
-                        chatSessionMapper.updateBySessionId(chatSession1, robotSessionId);
-
-                        // 发送完成通知
-                        MessageSendDTO<?> completeMessageDTO = new MessageSendDTO<>();
-                        completeMessageDTO.setSendUserId(robot.getUserId());
-                        completeMessageDTO.setSendTime(System.currentTimeMillis());
-                        completeMessageDTO.setMessageId(robotMessageId);
-                        completeMessageDTO.setMessageType(MessageTypeEnum.AI_CHAT_STREAM_END.getType());
-                        completeMessageDTO.setSessionId(robotSessionId);
-                        completeMessageDTO.setMessageContent(finalContent);
-                        completeMessageDTO.setContactId(sendUserId);
-                        messageHandler.sendMessage(completeMessageDTO);
-                    });
+            startAiStream(messageContent, robotMessageId, robotSessionId, sendUserId,
+                    robot.getUserId(), robot.getNickName());
         } else {
             messageHandler.sendMessage(messageSendDTO);
         }
 
         return messageSendDTO;
+    }
+
+    private void startAiStream(String prompt, Integer messageId, String sessionId, String contactId,
+                               String robotId, String robotNickName) {
+        AiStreamState state = new AiStreamState(messageId, sessionId, contactId, robotId, robotNickName);
+        activeAiStreams.put(messageId, state);
+        try {
+            state.disposable = aiService.sendMsgFlow(prompt).subscribe(
+                    content -> streamAiContent(state, content),
+                    error -> {
+                        log.warn("AI stream failed for message {}", messageId);
+                        finishAiStream(state, MessageStatusEnum.AI_FAILED, false);
+                    },
+                    () -> finishAiStream(state, MessageStatusEnum.SENT, false));
+            if (state.finished.get()) state.disposable.dispose();
+        } catch (RuntimeException error) {
+            log.warn("AI stream could not start for message {}", messageId);
+            finishAiStream(state, MessageStatusEnum.AI_FAILED, false);
+        }
+    }
+
+    private void streamAiContent(AiStreamState state, String content) {
+        synchronized (state) {
+            if (state.finished.get()) return;
+            state.content.append(content);
+            MessageSendDTO<?> streamingMessage = aiEndMessage(state, state.content.toString(), null);
+            streamingMessage.setMessageType(MessageTypeEnum.AI_CHAT_STREAM.getType());
+            messageHandler.sendMessage(streamingMessage);
+        }
+    }
+
+    private MessageSendDTO<?> finishAiStream(AiStreamState state, MessageStatusEnum status, boolean cancelProvider) {
+        synchronized (state) {
+            if (!state.finished.compareAndSet(false, true)) {
+                ChatMessage current = chatMessageMapper.selectByMessageId(state.messageId);
+                Integer currentStatus = current == null ? MessageStatusEnum.AI_FAILED.getStatus() : current.getStatus();
+                return aiEndMessage(state, current == null ? "" : current.getMessageContent(), currentStatus);
+            }
+            if (cancelProvider && state.disposable != null) state.disposable.dispose();
+
+            String finalContent = state.content.toString();
+            ChatMessage update = new ChatMessage();
+            update.setMessageContent(finalContent);
+            update.setStatus(status.getStatus());
+            chatMessageMapper.updateByMessageId(update, state.messageId);
+
+            ChatSession sessionUpdate = new ChatSession();
+            sessionUpdate.setLastMessage(aiSessionPreview(state, finalContent, status));
+            sessionUpdate.setLastReceiveTime(System.currentTimeMillis());
+            chatSessionMapper.updateBySessionId(sessionUpdate, state.sessionId);
+
+            activeAiStreams.remove(state.messageId, state);
+            MessageSendDTO<?> result = aiEndMessage(state, finalContent, status.getStatus());
+            messageHandler.sendMessage(result);
+            return result;
+        }
+    }
+
+    private String aiSessionPreview(AiStreamState state, String content, MessageStatusEnum status) {
+        String preview = content;
+        if (status == MessageStatusEnum.AI_CANCELLED) {
+            preview = content.isEmpty() ? "AI 生成已停止" : content + "（已停止）";
+        } else if (status == MessageStatusEnum.AI_FAILED) {
+            preview = content.isEmpty() ? "AI 生成失败，请重试" : content + "（生成失败）";
+        } else if (content.isEmpty()) {
+            preview = "AI 没有返回文本";
+        }
+        return state.robotNickName + ": " + preview;
+    }
+
+    private MessageSendDTO<?> aiEndMessage(AiStreamState state, String content, Integer status) {
+        MessageSendDTO<?> result = new MessageSendDTO<>();
+        result.setMessageId(state.messageId);
+        result.setSessionId(state.sessionId);
+        result.setContactId(state.contactId);
+        result.setContactType(UserContactTypeEnum.USER.getType());
+        result.setSendUserId(state.robotId);
+        result.setSendUserNickName(state.robotNickName);
+        result.setMessageType(MessageTypeEnum.AI_CHAT_STREAM_END.getType());
+        result.setMessageContent(content == null ? "" : content);
+        result.setStatus(status);
+        result.setSendTime(System.currentTimeMillis());
+        return result;
+    }
+
+    @Override
+    public MessageSendDTO<?> cancelAiMessage(Integer messageId, TokenUserInfoDto userInfoDto) {
+        if (messageId == null || messageId < 1) throw new BusinessException(ResponseCodeEnum.CODE_600);
+        ChatMessage message = chatMessageMapper.selectByMessageId(messageId);
+        if (message == null || !MessageTypeEnum.AI_CHAT.getType().equals(message.getMessageType())
+                || !Constants.ROBOT_UID.equals(message.getSendUserId())
+                || !userInfoDto.getUserId().equals(message.getContactId())) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
+
+        AiStreamState state = activeAiStreams.get(messageId);
+        if (state != null) return finishAiStream(state, MessageStatusEnum.AI_CANCELLED, true);
+
+        Integer status = message.getStatus();
+        if (MessageStatusEnum.AI_CANCELLED.getStatus().equals(status)
+                || MessageStatusEnum.AI_FAILED.getStatus().equals(status)
+                || (MessageStatusEnum.SENT.getStatus().equals(status) && message.getMessageContent() != null
+                && !message.getMessageContent().isEmpty())) {
+            return persistedAiEndMessage(message);
+        }
+
+        // A placeholder without a live task is left by a process restart; finish it as failed.
+        message.setStatus(MessageStatusEnum.AI_FAILED.getStatus());
+        chatMessageMapper.updateByMessageId(message, messageId);
+        ChatSession sessionUpdate = new ChatSession();
+        sessionUpdate.setLastMessage(message.getSendUserNickName() + ": AI 生成失败，请重试");
+        sessionUpdate.setLastReceiveTime(System.currentTimeMillis());
+        chatSessionMapper.updateBySessionId(sessionUpdate, message.getSessionId());
+        MessageSendDTO<?> result = persistedAiEndMessage(message);
+        messageHandler.sendMessage(result);
+        return result;
+    }
+
+    private MessageSendDTO<?> persistedAiEndMessage(ChatMessage message) {
+        AiStreamState state = new AiStreamState(message.getMessageId(), message.getSessionId(), message.getContactId(),
+                message.getSendUserId(), message.getSendUserNickName());
+        return aiEndMessage(state, message.getMessageContent(), message.getStatus());
     }
 
 

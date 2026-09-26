@@ -70,7 +70,7 @@ public class ChatMessage implements Serializable {
 	private Integer fileType;
 
 	/**
-	 * 状态 0:正在发送 1:已发送
+	 * 状态 0:正在发送 1:已发送；AI 消息另用 2:已停止、3:生成失败
 	 */
 	private Integer status;
 

@@ -82,6 +82,9 @@ public interface ChatMessageService {
 	 */
     MessageSendDTO<?> saveMessage(ChatMessage chatMessage, TokenUserInfoDto tokenUserInfoDto);
 
+	/** 停止当前用户发起且仍在运行的 AI 回复 */
+	MessageSendDTO<?> cancelAiMessage(Integer messageId, TokenUserInfoDto tokenUserInfoDto);
+
 	/**
 	 * 上传文件
 	 */

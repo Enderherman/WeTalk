@@ -75,8 +75,8 @@ public class MessageSendDTO<T> implements Serializable {
 
     /**
      * 消息状态
-     * 0：发送中 1：已发送
-     * 对于文件是异步上传用状态处理
+     * 0：发送中 1：已发送；AI 消息可为 2：已停止、3：生成失败。
+     * 对于文件是异步上传用状态处理。
      */
     private Integer status;
 
