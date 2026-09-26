@@ -205,6 +205,9 @@ public class UserInfoServiceImpl implements UserInfoService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void register(String email, String nickName, String password) {
+        if (isAdminEmail(email)) {
+            throw new BusinessException("Administrator accounts must be provisioned separately");
+        }
         UserInfo userInfo = userInfoMapper.selectByEmail(email);
         if (userInfo != null) {
             throw new BusinessException("邮箱已存在");
@@ -302,14 +305,16 @@ public class UserInfoServiceImpl implements UserInfoService {
             }
             String filePath = targetFileFolder.getPath() + "/" + userInfo.getUserId() + Constants.IMAGE_SUFFIX;
             avatarFile.transferTo(new File(filePath));
-            avatarCoverFile.transferTo(new File(filePath + Constants.COVER_IMAGE_SUFFIX));
+            if (avatarCoverFile != null) {
+                avatarCoverFile.transferTo(new File(filePath + Constants.COVER_IMAGE_SUFFIX));
+            }
         }
 
         UserInfo dbInfo = userInfoMapper.selectByUserId(userInfo.getUserId());
         userInfoMapper.updateByUserId(userInfo, userInfo.getUserId());
         //更新会话昵称
         String contactNameUpdate = null;
-        if (!dbInfo.getNickName().equals(userInfo.getNickName())) {
+        if (userInfo.getNickName() != null && !userInfo.getNickName().equals(dbInfo.getNickName())) {
             contactNameUpdate = userInfo.getNickName();
         }
         if(contactNameUpdate == null){
@@ -318,8 +323,10 @@ public class UserInfoServiceImpl implements UserInfoService {
 
         //更新redis信息
         TokenUserInfoDto tokenUserInfo = redisComponent.getTokenUserInfoDtoByUserId(userInfo.getUserId());
-        tokenUserInfo.setNickName(contactNameUpdate);
-        redisComponent.saveTokenUserInfoDto(tokenUserInfo);
+        if (tokenUserInfo != null) {
+            tokenUserInfo.setNickName(contactNameUpdate);
+            redisComponent.saveTokenUserInfoDto(tokenUserInfo);
+        }
 
         chatSessionUserService.updateRedundancyInfo(contactNameUpdate, userInfo.getUserId());
 
@@ -337,6 +344,9 @@ public class UserInfoServiceImpl implements UserInfoService {
         UserInfo userInfo = new UserInfo();
         userInfo.setStatus(status);
         userInfoMapper.updateByUserId(userInfo, userId);
+        if (UserStatusEnum.DISABLE.getStatus().equals(status)) {
+            forcedOffOnline(userId);
+        }
     }
 
     /**
@@ -344,6 +354,7 @@ public class UserInfoServiceImpl implements UserInfoService {
      */
     @Override
     public void forcedOffOnline(String userId) {
+        redisComponent.clearTokenUserInfoDto(userId);
         MessageSendDTO<?> messageSendDTO = new MessageSendDTO<>();
         messageSendDTO.setContactType(UserContactTypeEnum.USER.getType());
         messageSendDTO.setMessageType(MessageTypeEnum.FORCE_OFF_LINE.getType());
@@ -352,12 +363,18 @@ public class UserInfoServiceImpl implements UserInfoService {
 
     }
 
+    private boolean isAdminEmail(String email) {
+        return email != null && appConfig.getAdminEmails() != null
+                && java.util.Arrays.stream(appConfig.getAdminEmails().split(","))
+                .anyMatch(value -> value.trim().equalsIgnoreCase(email.trim()));
+    }
+
     private TokenUserInfoDto getTokenUserInfoDto(UserInfo userInfo) {
         return TokenUserInfoDto.builder()
                 .token(StringUtils.encodingByMd5(userInfo.getUserId()) + StringUtils.getRandomString(Constants.LENGTH_20))
                 .userId(userInfo.getUserId())
                 .nickName(userInfo.getNickName())
-                .admin(!StringUtils.isEmpty(appConfig.getAdminEmails()) && ArrayUtils.contains(appConfig.getAdminEmails().split(","), userInfo.getEmail()))
+                .admin(isAdminEmail(userInfo.getEmail()))
                 .build();
     }
 }

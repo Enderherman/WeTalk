@@ -1,6 +1,7 @@
 package top.enderherman.wetalk.controller;
 
 
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -12,8 +13,9 @@ import top.enderherman.wetalk.entity.vo.PaginationResultVO;
 import top.enderherman.wetalk.service.UserInfoBeautyService;
 
 import jakarta.annotation.Resource;
-import javax.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotNull;
 
+@Validated
 @RestController
 @RequestMapping("/userInfoBeauty")
 public class UserInfoBeautyController {

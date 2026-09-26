@@ -37,6 +37,17 @@ class RedisComponentTokenLifecycleTest {
         assertNull(redis.get(Constants.REDIS_KEY_WS_TOKEN_USERID + userId));
     }
 
+    @Test
+    void replacingLoginTokenRevokesThePreviousCredential() {
+        MemoryRedisUtils redis = new MemoryRedisUtils();
+        RedisComponent component = new RedisComponent();
+        ReflectionTestUtils.setField(component, "redisUtils", redis);
+        component.saveTokenUserInfoDto(TokenUserInfoDto.builder().userId("test-user").token("old").build());
+        component.saveTokenUserInfoDto(TokenUserInfoDto.builder().userId("test-user").token("new").build());
+        assertNull(component.getTokenUserInfoDto("old"));
+        assertNotNull(component.getTokenUserInfoDto("new"));
+    }
+
     private static class MemoryRedisUtils extends RedisUtils<Object> {
         private final Map<String, Object> values = new HashMap<>();
 

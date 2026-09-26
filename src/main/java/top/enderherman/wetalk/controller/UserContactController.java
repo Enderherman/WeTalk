@@ -1,6 +1,7 @@
 package top.enderherman.wetalk.controller;
 
 import org.apache.commons.lang3.ArrayUtils;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import top.enderherman.wetalk.annotation.GlobalInterceptor;
@@ -24,8 +25,9 @@ import top.enderherman.wetalk.utils.CopyUtils;
 
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
-import javax.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotNull;
 
+@Validated
 @RestController
 @RequestMapping("/contact")
 public class UserContactController extends ABaseController {

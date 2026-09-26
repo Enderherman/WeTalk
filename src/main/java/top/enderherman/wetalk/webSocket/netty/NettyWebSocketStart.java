@@ -22,6 +22,9 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class NettyWebSocketStart implements Runnable {
 
+    private volatile boolean running;
+    public boolean isRunning() { return running; }
+
     private static final EventLoopGroup bossGroup = new NioEventLoopGroup(1);
 
     private static final EventLoopGroup workGroup = new NioEventLoopGroup();
@@ -38,6 +41,7 @@ public class NettyWebSocketStart implements Runnable {
 
     @PreDestroy
     public void close() {
+        running = false;
         bossGroup.shutdownGracefully();
         workGroup.shutdownGracefully();
     }
@@ -72,12 +76,14 @@ public class NettyWebSocketStart implements Runnable {
             });
 
             ChannelFuture channelFuture = serverBootstrap.bind(appConfig.getWsPost()).sync();
+            running = true;
             log.info("netty启动成功, 端口:{}", appConfig.getWsPost());
             channelFuture.channel().closeFuture().sync();
 
         } catch (InterruptedException e) {
             log.error("netty启动失败", e);
         } finally {
+            running = false;
             bossGroup.shutdownGracefully();
             workGroup.shutdownGracefully();
         }

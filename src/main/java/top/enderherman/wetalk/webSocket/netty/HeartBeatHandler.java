@@ -9,6 +9,7 @@ import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.util.Attribute;
 import io.netty.util.AttributeKey;
 import lombok.extern.slf4j.Slf4j;
+import top.enderherman.wetalk.webSocket.ChannelContextUtils;
 import org.springframework.stereotype.Component;
 
 @Slf4j
@@ -22,7 +23,7 @@ public class HeartBeatHandler extends ChannelDuplexHandler {
             IdleStateEvent event = (IdleStateEvent) evt;
             if (event.state() == IdleState.READER_IDLE) {
                 Channel channel = ctx.channel();
-                Attribute<String> attribute = channel.attr(AttributeKey.valueOf(channel.id().toString()));
+                Attribute<String> attribute = channel.attr(ChannelContextUtils.USER_ID);
                 String userId = attribute.get();
                 log.info("用户: {} 心跳超时", userId);
                 ctx.close();

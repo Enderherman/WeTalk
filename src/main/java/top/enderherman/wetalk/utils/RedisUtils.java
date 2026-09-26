@@ -29,7 +29,7 @@ public class RedisUtils<V> {
         try {
             return redisTemplate.opsForValue().get(key);
         } catch (SerializationException e) {
-            log.error("Redis 反序列化失败，键：{}，错误：{}", key, e.getMessage());
+            log.error("Redis operation failed", e);
             throw new BusinessException(ResponseCodeEnum.CODE_506);
         }
     }
@@ -47,7 +47,7 @@ public class RedisUtils<V> {
             redisTemplate.opsForValue().set(key, value);
             return true;
         } catch (Exception e) {
-            log.error("redis存储失败, key: {}, value: {}, error: {}", key, value, e.getMessage(), e);
+            log.error("Redis operation failed", e);
             return false;
         }
     }
@@ -69,7 +69,7 @@ public class RedisUtils<V> {
             }
             return true;
         } catch (Exception e) {
-            log.error("redis存储失败, key: {}, value: {}, error: {}", key, value, e.getMessage(), e);
+            log.error("Redis operation failed", e);
             return false;
         }
     }
@@ -100,7 +100,7 @@ public class RedisUtils<V> {
             }
             return true;
         } catch (Exception e) {
-            log.error("redis<UNK>, key: {}, time: {}, error: {}", key, time, e.getMessage(), e);
+            log.error("Redis operation failed", e);
             return false;
         }
     }
@@ -132,7 +132,7 @@ public class RedisUtils<V> {
             }
             return true;
         } catch (Exception e) {
-            log.error("redis<UNK>, key: {}, values: {}, error: {}", key, values, e.getMessage(), e);
+            log.error("Redis operation failed", e);
             return false;
         }
     }

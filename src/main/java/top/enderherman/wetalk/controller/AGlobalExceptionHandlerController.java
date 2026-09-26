@@ -14,6 +14,8 @@ import top.enderherman.wetalk.common.ResponseCodeEnum;
 import top.enderherman.wetalk.exception.BusinessException;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolationException;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 
 @RestControllerAdvice
 public class AGlobalExceptionHandlerController extends ABaseController {
@@ -48,7 +50,8 @@ public class AGlobalExceptionHandlerController extends ABaseController {
             ajaxResponse.setCode(biz.getCode() == null ? ResponseCodeEnum.CODE_600.getCode() : biz.getCode());
             ajaxResponse.setMessage(biz.getMessage());
             ajaxResponse.setStatus(STATUS_ERROR);
-        } else if (e instanceof BindException|| e instanceof MethodArgumentTypeMismatchException) {
+        } else if (e instanceof BindException || e instanceof MethodArgumentTypeMismatchException
+                || e instanceof ConstraintViolationException || e instanceof HandlerMethodValidationException) {
             //参数类型错误
             ajaxResponse.setCode(ResponseCodeEnum.CODE_600.getCode());
             ajaxResponse.setMessage(ResponseCodeEnum.CODE_600.getMsg());

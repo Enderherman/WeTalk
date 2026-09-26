@@ -1,5 +1,6 @@
 package top.enderherman.wetalk.controller;
 
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -22,13 +23,14 @@ import top.enderherman.wetalk.service.UserContactService;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 
-import javax.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotNull;
 import java.util.List;
 
 /**
  * 群组信息表 Controller
  */
 @RequestMapping("/group")
+@Validated
 @RestController("groupInfoController")
 
 public class GroupInfoController extends ABaseController {

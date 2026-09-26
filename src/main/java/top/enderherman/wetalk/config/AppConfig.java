@@ -22,6 +22,11 @@ public class AppConfig {
     @Value("${project.folder:}")
     private String projectFolder;
 
+    public String getProjectFolder() {
+        return java.nio.file.Path.of(projectFolder).toAbsolutePath().normalize()
+                + java.io.File.separator;
+    }
+
     /**
      * 管理员
      */

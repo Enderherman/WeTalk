@@ -2,6 +2,7 @@ package top.enderherman.wetalk.controller;
 
 import cn.hutool.core.util.ArrayUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -23,16 +24,17 @@ import top.enderherman.wetalk.utils.StringUtils;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import javax.validation.constraints.NotNull;
-import javax.validation.constraints.Size;
-import javax.validation.constraints.Min;
-import javax.validation.constraints.Max;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 
 @Slf4j
+@Validated
 @RestController
 @RequestMapping("/chat")
 public class ChatController extends ABaseController {
@@ -93,7 +95,7 @@ public class ChatController extends ABaseController {
     public BaseResponse<String> uploadFile(HttpServletRequest request,
                                            @NotNull Integer messageId,
                                            @NotNull MultipartFile file,
-                                           @NotNull MultipartFile cover) {
+                                           MultipartFile cover) {
         TokenUserInfoDto tokenUserInfoDto = getTokenUserDto(request);
         chatMessageService.saveMessageFile(tokenUserInfoDto.getUserId(), messageId, file, cover);
         return BaseResponse.success("上传成功");
@@ -109,53 +111,35 @@ public class ChatController extends ABaseController {
                              @NotNull String fileId,
                              @NotNull Boolean showCover) {
         TokenUserInfoDto tokenUserInfoDto = getTokenUserDto(request);
-        OutputStream out = null;
-        FileInputStream in = null;
-        try {
-            File file;
-            //获取头像
-            if (!StringUtils.isNumber(fileId)) {
-                String avatarFolderName = Constants.FILE_FOLDER + Constants.AVATAR_FOLDER;
-                String avatarPath = appConfig.getProjectFolder() + avatarFolderName + fileId + Constants.IMAGE_SUFFIX;
-                if (showCover) {
-                    avatarPath = avatarPath + Constants.COVER_IMAGE_SUFFIX;
-                }
-                file = new File(avatarPath);
-                if (!file.exists()) {
-                    throw new BusinessException(ResponseCodeEnum.CODE_602);
-                }
-            } else {
+        File file;
+        if (!StringUtils.isNumber(fileId)) {
+            if (!fileId.matches("[a-zA-Z0-9_-]{1,128}")) {
+                throw new BusinessException(ResponseCodeEnum.CODE_600);
+            }
+            String avatarPath = appConfig.getProjectFolder() + Constants.FILE_FOLDER
+                    + Constants.AVATAR_FOLDER + fileId + Constants.IMAGE_SUFFIX;
+            if (Boolean.TRUE.equals(showCover)) {
+                avatarPath += Constants.COVER_IMAGE_SUFFIX;
+            }
+            file = new File(avatarPath);
+            if (!file.isFile()) {
+                throw new BusinessException(ResponseCodeEnum.CODE_602);
+            }
+        } else {
+            try {
                 file = chatMessageService.downloadFile(tokenUserInfoDto, Long.parseLong(fileId), showCover);
+            } catch (NumberFormatException e) {
+                throw new BusinessException(ResponseCodeEnum.CODE_600);
             }
-            response.setContentType("application/x-msdownload; charset=UTF-8");
-            response.setHeader("Content-Disposition", "attachment;");
-            response.setContentLengthLong(file.length());
-            in = new FileInputStream(file);
-            byte[] byteData = new byte[1024];
-            out = response.getOutputStream();
-            int len;
-            while ((len = in.read(byteData)) != -1) {
-                out.write(byteData, 0, len);
-            }
-            out.flush();
-        } catch (Exception e) {
-            response.setHeader("content-type", "application/json");
-            log.error("下载文件失败");
-        } finally {
-            if (out != null) {
-                try {
-                    out.close();
-                } catch (IOException e) {
-                    log.error("IO异常", e);
-                }
-            }
-            if (in != null) {
-                try {
-                    in.close();
-                } catch (IOException e) {
-                    log.error("IO异常", e);
-                }
-            }
+        }
+        response.setContentType("application/octet-stream");
+        response.setHeader("Content-Disposition", "attachment");
+        response.setContentLengthLong(file.length());
+        try (FileInputStream in = new FileInputStream(file)) {
+            in.transferTo(response.getOutputStream());
+        } catch (IOException e) {
+            log.error("File download I/O failure", e);
+            throw new BusinessException(ResponseCodeEnum.CODE_500);
         }
     }
 }

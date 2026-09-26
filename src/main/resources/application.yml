@@ -2,62 +2,83 @@ spring:
   application:
     name: WeTalk
   profiles:
-    active: dev
-  config:
-    import: optional:application-ai.yml
-  # 增加连接和读取超时时间
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  main:
+    headless: true
   mvc:
     async:
       request-timeout: 180000
-  # 关闭favicon请求
-  # web:
-  #   favicon:
-  #     enabled: false
-  # 最大文件限制
   servlet:
     multipart:
-      max-file-size: 500MB
-      max-request-size: 500MB
+      max-file-size: ${MAX_UPLOAD_SIZE:500MB}
+      max-request-size: ${MAX_UPLOAD_SIZE:500MB}
       location: ${java.io.tmpdir}
-      enabled: true
-      file-size-threshold: 0
-      resolve-lazily: false
-    # session过期时间
-    session:
-      timeout: PT60M
-  # 错误处理：请求无匹配时抛异常
   web:
     resources:
       add-mappings: false
-  # springAi配置
   ai:
+    model:
+      chat: ${WETALK_AI_MODEL:none}
+      embedding: none
+    chat:
+      client:
+        enabled: ${WETALK_AI_ENABLED:false}
     openai:
-      base-url: https://api.deepseek.com
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com}
       chat:
         options:
-          model: deepseek-chat
+          model: ${OPENAI_MODEL:deepseek-chat}
           temperature: 0.7
-          maxTokens: 2048
+          max-tokens: 2048
     retry:
       max-attempts: 3
-      backoff:
-        initial-interval: 1000
-        multiplier: 2
-    timeout: 30s
-# 服务端与 Web 容器配置
+  datasource:
+    url: ${DB_URL:jdbc:mysql://127.0.0.1:3306/easychat?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    username: ${DB_USERNAME:wetalk}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      connection-timeout: 30000
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      database: ${REDIS_DATABASE:0}
+      username: ${REDIS_USERNAME:}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL:false}
+      timeout: 2s
+      connect-timeout: 2s
+
 server:
-  port: 5050
-  tomcat:
-    connection-timeout: 180000
-    max-http-form-post-size: 500MB
+  port: ${HTTP_PORT:5050}
   servlet:
     context-path: /api
-    session:
-      timeout: PT60M
+  shutdown: graceful
 
-# 是否是开发环境
-dev: false
-
-# ws.port
 ws:
-  port: 5051
+  port: ${WS_PORT:5051}
+project:
+  folder: ${PROJECT_FOLDER:./data/}
+admin:
+  emails: ${ADMIN_EMAILS:}
+wetalk:
+  ai:
+    enabled: ${WETALK_AI_ENABLED:false}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db,redis,websocket
+dev: false

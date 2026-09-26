@@ -1,6 +1,7 @@
 package top.enderherman.wetalk.controller;
 
 
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -19,10 +20,11 @@ import top.enderherman.wetalk.service.GroupInfoService;
 import top.enderherman.wetalk.service.UserInfoService;
 
 import jakarta.annotation.Resource;
-import javax.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotNull;
 import java.io.File;
 import java.io.IOException;
 
+@Validated
 @RestController
 @RequestMapping("/admin")
 public class ManageController extends ABaseController {
@@ -120,7 +122,9 @@ public class ManageController extends ABaseController {
             }
             String filePath = targetFileFolder.getPath() + "/" + Constants.ROBOT_UID + Constants.IMAGE_SUFFIX;
             robotAvatarFile.transferTo(new File(filePath));
-            robotAvatarCoverFile.transferTo(new File(filePath + Constants.COVER_IMAGE_SUFFIX));
+            if (robotAvatarCoverFile != null) {
+                robotAvatarCoverFile.transferTo(new File(filePath + Constants.COVER_IMAGE_SUFFIX));
+            }
         }
         redisComponent.saveSysSetting(sysSettingDto);
         return BaseResponse.success();

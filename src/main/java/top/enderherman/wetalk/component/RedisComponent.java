@@ -37,6 +37,10 @@ public class RedisComponent {
      * 存储用户Token
      */
     public void saveTokenUserInfoDto(TokenUserInfoDto dto) {
+        String previous = (String) redisUtils.get(Constants.REDIS_KEY_WS_TOKEN_USERID + dto.getUserId());
+        if (previous != null && !previous.equals(dto.getToken())) {
+            redisUtils.delete(Constants.REDIS_KEY_WS_TOKEN + previous);
+        }
         // 1.key: userId val: token
         redisUtils.setEx(Constants.REDIS_KEY_WS_TOKEN_USERID + dto.getUserId(), dto.getToken(), Constants.REDIS_KEY_EXPIRES_DAY * 2);
 
@@ -115,7 +119,7 @@ public class RedisComponent {
      * 单独添加联系人
      */
     public void saveContact(String userId, String contactId) {
-        List<String> userContactList = getUserContactList(Constants.REDIS_KEY_USER_CONTACT + userId);
+        List<String> userContactList = getUserContactList(userId);
         if (!userContactList.contains(contactId)) {
             redisUtils.listPush(Constants.REDIS_KEY_USER_CONTACT + userId, contactId, Constants.REDIS_KEY_EXPIRES_DAY * 2);
         }

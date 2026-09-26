@@ -51,9 +51,13 @@ public class WebSocketHandler extends SimpleChannelInboundHandler<TextWebSocketF
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, TextWebSocketFrame textWebSocketFrame) throws Exception {
         Channel channel = ctx.channel();
-        Attribute<String> attribute = channel.attr(AttributeKey.valueOf(channel.id().toString()));
+        Attribute<String> attribute = channel.attr(ChannelContextUtils.USER_ID);
         String userId = attribute.get();
         //log.info("收到用户: {} 的消息:{}", userId, textWebSocketFrame.text());
+        if (StringUtils.isEmpty(userId)) {
+            ctx.close();
+            return;
+        }
         redisComponent.saveUserHeartBeat(userId);
     }
 
@@ -87,15 +91,13 @@ public class WebSocketHandler extends SimpleChannelInboundHandler<TextWebSocketF
      * 获取token
      */
     private String getToken(String url) {
-        if (StringUtils.isEmpty(url) || !url.contains("?")) {
+        if (StringUtils.isEmpty(url)) return null;
+        try {
+            java.util.List<String> tokens = new io.netty.handler.codec.http.QueryStringDecoder(url)
+                    .parameters().get("token");
+            return tokens != null && tokens.size() == 1 ? tokens.get(0) : null;
+        } catch (IllegalArgumentException e) {
             return null;
         }
-        String[] queryParams = url.split("\\?");
-        if (queryParams.length != 2)
-            return null;
-        String[] params = queryParams[1].split("=");
-        if (params.length != 2)
-            return null;
-        return params[1];
     }
 }

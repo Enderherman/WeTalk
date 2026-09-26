@@ -1,0 +1,2 @@
+project:
+  folder: ${PROJECT_FOLDER:/data/wetalk/}

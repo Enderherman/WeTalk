@@ -124,7 +124,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         query.setBeforeMessageId(beforeMessageId);
         query.setOrderBy("message_id desc");
         query.setPageNo(1);
-        query.setPageSize(pageSize == null ? 30 : Math.min(pageSize, 50));
+        query.setPageSize(pageSize == null ? 30 : Math.max(1, Math.min(pageSize, 50)));
         PaginationResultVO<ChatMessage> result = findListByPage(query);
         Collections.reverse(result.getList());
         return result;
@@ -210,7 +210,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         //校验好友关系
         if (!Constants.ROBOT_UID.equals(userInfoDto.getUserId())) {
             List<String> userContactList = redisComponent.getUserContactList(userInfoDto.getUserId());
-            if (!userContactList.contains(chatMessage.getContactId())) {
+            if (userContactList == null || !userContactList.contains(chatMessage.getContactId())) {
                 UserContactTypeEnum contactTypeEnum = UserContactTypeEnum.getByPrefix(chatMessage.getContactId());
                 if (contactTypeEnum == UserContactTypeEnum.USER) {
                     throw new BusinessException(ResponseCodeEnum.CODE_902);
@@ -218,6 +218,10 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                     throw new BusinessException(ResponseCodeEnum.CODE_903);
                 }
             }
+        }
+
+        if (Constants.ROBOT_UID.equals(chatMessage.getContactId()) && !aiService.isEnabled()) {
+            throw new BusinessException("AI service is disabled");
         }
 
         //1.会话信息
@@ -285,19 +289,8 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             // 先插入空消息到数据库
             chatMessageMapper.insert(robotMessage);
 
-            // 查询获取数据库生成的messageId
-            ChatMessageQuery query = new ChatMessageQuery();
-            query.setSendUserId(robot.getUserId());
-            query.setContactId(sendUserId);
-            query.setOrderBy("message_id desc");
-            query.setPageSize(1);
-            List<ChatMessage> robotMessages = chatMessageMapper.selectList(query);
-            if (robotMessages.isEmpty()) {
-                log.error("无法获取AI消息ID");
-                return messageSendDTO;
-            }
-            Integer robotMessageId = robotMessages.get(0).getMessageId();
-            MessageSendDTO<?> initSendDTO = CopyUtils.copy(robotMessages.get(0), MessageSendDTO.class);
+            Integer robotMessageId = robotMessage.getMessageId();
+            MessageSendDTO<?> initSendDTO = CopyUtils.copy(robotMessage, MessageSendDTO.class);
             initSendDTO.setSendTime(System.currentTimeMillis());
             messageHandler.sendMessage(initSendDTO);
             // 使用流式响应处理AI回复
@@ -380,8 +373,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                 ArrayUtils.contains(Constants.VIDEO_SUFFIX_LIST, fileSuffix.toLowerCase()) &&
                 file.getSize() > Constants.FILE_SIZE_MB * sysSettingDto.getMaxVideoSize()) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
-        } else if (!StringUtils.isEmpty(fileSuffix) &&
-                !ArrayUtils.contains(Constants.IMAGE_SUFFIX_LIST, fileSuffix.toLowerCase()) &&
+        } else if (!ArrayUtils.contains(Constants.IMAGE_SUFFIX_LIST, fileSuffix.toLowerCase()) &&
                 !ArrayUtils.contains(Constants.VIDEO_SUFFIX_LIST, fileSuffix.toLowerCase()) &&
                 file.getSize() > Constants.FILE_SIZE_MB * sysSettingDto.getMaxFileSize()) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
@@ -389,7 +381,16 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
 
         String fileName = file.getOriginalFilename();
+        if (fileName == null) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
         String fileExtName = StringUtils.getFileSuffix(fileName);
+        if (!fileExtName.isEmpty() && !fileExtName.matches("[.][a-zA-Z0-9]{1,16}")) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
+        if (cover != null && cover.getSize() > Constants.FILE_SIZE_MB * sysSettingDto.getMaxImageSize()) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
         String fileRealName = messageId + fileExtName;
         String month = DateUtils.format(new Date(chatMessage.getSendTime()), DateTimePatternEnum.YYYY_MM.getPattern());
         File folder = new File(appConfig.getProjectFolder() + Constants.FILE_FOLDER + month);
@@ -407,6 +408,8 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             throw new BusinessException("文件上传失败");
         }
         chatMessage.setStatus(MessageStatusEnum.SENT.getStatus());
+        chatMessage.setFileName(fileName);
+        chatMessage.setFileSize(file.getSize());
         chatMessageMapper.updateByMessageId(chatMessage, messageId);
 
         MessageSendDTO<?> messageSendDTO = new MessageSendDTO<>();
@@ -421,45 +424,42 @@ public class ChatMessageServiceImpl implements ChatMessageService {
      * 文件下载
      */
     @Override
-    public File downloadFile(TokenUserInfoDto tokenUserInfoDto, Long messageId, Boolean showCover) {
-        ChatMessage chatMessage = chatMessageMapper.selectByMessageId(messageId.intValue());
-        String contactId = chatMessage.getContactId();
-        UserContactTypeEnum contactTypeEnum = UserContactTypeEnum.getByPrefix(contactId);
-        List<String> userContactList = redisComponent.getUserContactList(tokenUserInfoDto.getUserId());
-        if (UserContactTypeEnum.USER.equals(contactTypeEnum) && (
-                !userContactList.contains(contactId) &&
-                        !tokenUserInfoDto.getUserId().equals(contactId)
-        )) {
+    public File downloadFile(TokenUserInfoDto user, Long messageId, Boolean showCover) {
+        if (messageId == null || messageId < 1 || messageId > Integer.MAX_VALUE) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
-        if (UserContactTypeEnum.GROUP.equals(contactTypeEnum)) {
-            UserContactQuery query = new UserContactQuery();
-            query.setUserId(tokenUserInfoDto.getUserId());
-            query.setContactId(chatMessage.getContactId());
-            query.setContactType(UserContactTypeEnum.GROUP.getType());
-            query.setStatus(UserContactStatusEnum.FRIEND.getStatus());
-            Integer contactCount = userContactMapper.selectCount(query);
-            if (contactCount == 0) {
+        ChatMessage message = chatMessageMapper.selectByMessageId(messageId.intValue());
+        if (message == null || message.getSendTime() == null) {
+            throw new BusinessException(ResponseCodeEnum.CODE_602);
+        }
+        UserContactTypeEnum type = UserContactTypeEnum.getByPrefix(message.getContactId());
+        if (type == UserContactTypeEnum.USER) {
+            if (!user.getUserId().equals(message.getSendUserId())
+                    && !user.getUserId().equals(message.getContactId())) {
                 throw new BusinessException(ResponseCodeEnum.CODE_600);
             }
+        } else if (type == UserContactTypeEnum.GROUP) {
+            UserContactQuery query = new UserContactQuery();
+            query.setUserId(user.getUserId());
+            query.setContactId(message.getContactId());
+            query.setContactType(UserContactTypeEnum.GROUP.getType());
+            query.setStatus(UserContactStatusEnum.FRIEND.getStatus());
+            Integer count = userContactMapper.selectCount(query);
+            if (count == null || count == 0) {
+                throw new BusinessException(ResponseCodeEnum.CODE_600);
+            }
+        } else {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
-
-        String month = DateUtils.format(new Date(chatMessage.getSendTime()), DateTimePatternEnum.YYYY_MM.getPattern());
-        File folder = new File(appConfig.getProjectFolder() + Constants.FILE_FOLDER + month);
-        if (!folder.exists()) {
-            folder.mkdirs();
+        String suffix = StringUtils.getFileSuffix(message.getFileName());
+        if (!suffix.isEmpty() && !suffix.matches("[.][a-zA-Z0-9]{1,16}")) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
-        String fileName = chatMessage.getFileName();
-        String fileExtName = StringUtils.getFileSuffix(fileName);
-        String fileRealName = messageId + fileExtName;
-
-        if (showCover != null && showCover) {
-            fileRealName = fileRealName + Constants.COVER_IMAGE_SUFFIX;
-        }
-        File file = new File(folder.getPath() + "/" + fileRealName);
-        if (!file.exists()) {
-            log.info("文件不存在");
-            throw new BusinessException(new BusinessException(ResponseCodeEnum.CODE_600));
+        String month = DateUtils.format(new Date(message.getSendTime()), DateTimePatternEnum.YYYY_MM.getPattern());
+        String name = messageId + suffix + (Boolean.TRUE.equals(showCover) ? Constants.COVER_IMAGE_SUFFIX : "");
+        File file = new File(appConfig.getProjectFolder() + Constants.FILE_FOLDER + month, name);
+        if (!file.isFile()) {
+            throw new BusinessException(ResponseCodeEnum.CODE_602);
         }
         return file;
     }

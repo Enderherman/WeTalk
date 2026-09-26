@@ -41,6 +41,8 @@ import java.util.stream.Collectors;
 @Component
 public class ChannelContextUtils {
 
+    public static final AttributeKey<String> USER_ID = AttributeKey.valueOf("wetalk.userId");
+
     @Resource
     private RedisComponent redisComponent;
 
@@ -66,24 +68,19 @@ public class ChannelContextUtils {
      * 添加联系人
      */
     public void addContext(String userId, Channel channel) {
-        String channelId = channel.id().toString();
-        AttributeKey attributeKey = null;
-        if (!AttributeKey.exists(channelId)) {
-            attributeKey = AttributeKey.newInstance(channelId);
-        } else {
-            attributeKey = AttributeKey.valueOf(channelId);
-        }
-        channel.attr(attributeKey).set(userId);
+        channel.attr(USER_ID).set(userId);
 
         //群聊
         List<String> contactList = redisComponent.getUserContactList(userId);
+        if (contactList == null) contactList = List.of();
         for (String contact : contactList) {
             if (contact.startsWith(UserContactTypeEnum.GROUP.getPrefix())) {
                 addUserToGroup(contact, channel);
             }
         }
         //用户
-        USER_CONTEXT_MAP.put(userId, channel);
+        Channel previous = USER_CONTEXT_MAP.put(userId, channel);
+        if (previous != null && previous != channel) previous.close();
         redisComponent.saveUserHeartBeat(userId);
 
         //查询用户最后登录时间
@@ -95,10 +92,8 @@ public class ChannelContextUtils {
         userInfo.setLastLoginTime(new Date());
         userInfoMapper.updateByUserId(userInfo, userId);
 
-        // 如果时间太久，只取最近三天的消息数 TODO 我觉这里这么操作师错误的 应该是获取上次离线到目前的消息
-        if (sourceLastOfTime != null && System.currentTimeMillis() - Constants.MILLISECONDS_THREE_DAY > sourceLastOfTime) {
-            lastOfTime = Constants.MILLISECONDS_THREE_DAY;
-        }
+        long cutoff = System.currentTimeMillis() - Constants.MILLISECONDS_THREE_DAY;
+        lastOfTime = sourceLastOfTime == null ? cutoff : Math.max(sourceLastOfTime, cutoff);
         // 1.查询会话信息 查询用户所有的会话信息 保证换了设备会话同步
         ChatSessionUserQuery chatSessionUserQuery = new ChatSessionUserQuery();
         chatSessionUserQuery.setUserId(userId);
@@ -116,6 +111,7 @@ public class ChannelContextUtils {
         ChatMessageQuery chatMessageQuery = new ChatMessageQuery();
         chatMessageQuery.setContactIdList(groupIdList);
         chatMessageQuery.setLastReceiveTime(lastOfTime);
+        chatMessageQuery.setOrderBy("message_id asc");
         List<ChatMessage> chatMessageList = chatMessageMapper.selectList(chatMessageQuery);
         wsInitDataVO.setChatMessageList(chatMessageList);
 
@@ -149,14 +145,9 @@ public class ChannelContextUtils {
      * 增加群
      */
     private void addUserToGroup(String groupId, Channel channel) {
-        ChannelGroup group = GROUP_CONTEXT_MAP.get(groupId);
-        if (group == null) {
-            group = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
-            GROUP_CONTEXT_MAP.put(groupId, group);
-        }
-        if (channel == null) {
-            return;
-        }
+        if (channel == null) return;
+        ChannelGroup group = GROUP_CONTEXT_MAP.computeIfAbsent(groupId,
+                key -> new DefaultChannelGroup(GlobalEventExecutor.INSTANCE));
         group.add(channel);
     }
 
@@ -165,10 +156,9 @@ public class ChannelContextUtils {
      * 断开连接
      */
     public void removeContext(Channel channel) {
-        Attribute<String> attributeKey = channel.attr(AttributeKey.valueOf(channel.id().toString()));
-        String userId = attributeKey.get();
-        if (!StringUtils.isEmpty(userId)) {
-            USER_CONTEXT_MAP.remove(userId);
+        String userId = channel.attr(USER_ID).get();
+        if (StringUtils.isEmpty(userId) || !USER_CONTEXT_MAP.remove(userId, channel)) {
+            return;
         }
         redisComponent.removeUserHeartBeat(userId);
         // 更新用户最后离线时间
@@ -250,7 +240,7 @@ public class ChannelContextUtils {
         //解散群聊
         if (messageTypeEnum == MessageTypeEnum.DISSOLUTION_GROUP) {
             GROUP_CONTEXT_MAP.remove(messageSendDTO.getContactId());
-            group.close();
+            group.clear();
         }
     }
 
@@ -266,6 +256,7 @@ public class ChannelContextUtils {
         if (sendChannel == null) {
             return;
         }
+        messageSendDTO = top.enderherman.wetalk.utils.CopyUtils.copy(messageSendDTO, MessageSendDTO.class);
         // 相对于客户端而言 联系人就是发送人 所以转换一下再发送 好友申请时不 处理
         if (MessageTypeEnum.ADD_FRIEND_SELF.getType().equals(messageSendDTO.getMessageType())) {
             //从ExtentDATA中取出来 接收人的用户信息 加载到发送人的客户端
@@ -274,7 +265,7 @@ public class ChannelContextUtils {
             messageSendDTO.setContactId(userInfo.getUserId());
             messageSendDTO.setContactName(userInfo.getNickName());
             messageSendDTO.setExtentData(null);
-        } else {
+        } else if (!StringUtils.isEmpty(messageSendDTO.getSendUserId())) {
             //接收人refresh消息
             messageSendDTO.setContactId(messageSendDTO.getSendUserId());
             messageSendDTO.setContactName(messageSendDTO.getSendUserNickName());

@@ -20,6 +20,10 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Value("${java.io.tmpdir}")
     private String tmpdir;
+    @Value("${spring.servlet.multipart.max-file-size:500MB}")
+    private String maxFileSize;
+    @Value("${spring.servlet.multipart.max-request-size:500MB}")
+    private String maxRequestSize;
 
     /**
      * 自定义MultipartResolver
@@ -44,8 +48,8 @@ public class WebConfig implements WebMvcConfigurer {
         }
         
         factory.setLocation(tmpdir);
-        factory.setMaxFileSize(DataSize.ofMegabytes(500));
-        factory.setMaxRequestSize(DataSize.ofMegabytes(500));
+        factory.setMaxFileSize(DataSize.parse(maxFileSize));
+        factory.setMaxRequestSize(DataSize.parse(maxRequestSize));
         
         return factory.createMultipartConfig();
     }

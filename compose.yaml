@@ -1,0 +1,22 @@
+services:
+  wetalk:
+    image: wetalk-backend:0.0.2
+    build: .
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      HTTP_PORT: "5050"
+      WS_PORT: "5051"
+      PROJECT_FOLDER: /data/wetalk/
+    ports:
+      - "${HTTP_PUBLISHED_PORT:-5050}:5050"
+      - "${WS_PUBLISHED_PORT:-5051}:5051"
+    volumes:
+      - "${WETALK_DATA_DIR:-./data}:/data/wetalk"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,size=536870912,uid=10001,gid=10001
+    mem_limit: 1g
