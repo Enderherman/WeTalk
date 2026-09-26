@@ -22,6 +22,7 @@ import top.enderherman.wetalk.utils.StringUtils;
 import jakarta.annotation.Resource;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
@@ -124,6 +125,39 @@ public class AppUpdateServiceImpl implements AppUpdateService {
     @Override
     public AppUpdate getAppUpdateById(Integer id) {
         return this.appUpdateMapper.selectById(id);
+    }
+
+    @Override
+    public File getDownloadFile(Integer id, String userId) {
+        if (id == null || id <= 0 || StringUtils.isEmpty(userId)) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
+        AppUpdate update = appUpdateMapper.selectById(id);
+        if (update == null || !canUserDownload(update, userId)) {
+            throw new BusinessException(ResponseCodeEnum.CODE_404);
+        }
+        if (!AppUpdateFileTypeEnum.LOCAL.getType().equals(update.getFileType())) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
+
+        Path updateFolder = Path.of(appConfig.getProjectFolder(), Constants.FILE_FOLDER, Constants.APP_UPDATE_FILE)
+                .toAbsolutePath().normalize();
+        Path updatePath = updateFolder.resolve(id + Constants.APP_EXE_SUFFIX).normalize();
+        if (!updatePath.startsWith(updateFolder)) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
+        File file = updatePath.toFile();
+        if (!file.isFile()) {
+            throw new BusinessException(ResponseCodeEnum.CODE_602);
+        }
+        return file;
+    }
+
+    private boolean canUserDownload(AppUpdate update, String userId) {
+        if (AppUpdateStatusEnum.ALL.getStatus().equals(update.getStatus())) return true;
+        if (!AppUpdateStatusEnum.GRAYSCALE.getStatus().equals(update.getStatus())
+                || StringUtils.isEmpty(update.getGrayscaleUid())) return false;
+        return Arrays.stream(update.getGrayscaleUid().split(",")).anyMatch(userId::equals);
     }
 
     /**

@@ -6,6 +6,7 @@ import top.enderherman.wetalk.entity.query.AppUpdateQuery;
 import top.enderherman.wetalk.entity.vo.AppUpdateVO;
 import top.enderherman.wetalk.entity.vo.PaginationResultVO;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.List;
 
@@ -59,6 +60,11 @@ public interface AppUpdateService {
 	 * 根据Id查询对象
 	 */
 	AppUpdate getAppUpdateById(Integer id);
+
+	/**
+	 * 获取当前用户有权下载的本地更新包
+	 */
+	File getDownloadFile(Integer id, String userId);
 
 
 	/**

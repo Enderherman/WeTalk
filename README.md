@@ -170,5 +170,5 @@ Dockerfile 使用官方 [Eclipse Temurin](https://hub.docker.com/_/eclipse-temur
 
 - 当前密码协议仍兼容 App/Web 的历史 MD5 登录摘要；升级 BCrypt/Argon2 和邮箱验证必须协调客户端及已有账号迁移。
 - 管理员角色仍按可信邮箱名单配置，后续宜加入数据库角色和邮箱验证。
-- 客户端引用 /api/app/downloadUpdate，但当前后端没有该映射；桌面自动安装更新流程仍需补齐，普通聊天部署不依赖它。
+- `/api/app/downloadUpdate` 已实现为受登录态保护的本地更新包下载端点；仅允许全量发布或当前账号在灰度名单中的包。外链更新仍由客户端打开 `outerLink`。
 - SQL 初始化不含本机历史数据；MySQL/Redis 容器部署结果和 App/Web 端到端验证需记录实际结果。
