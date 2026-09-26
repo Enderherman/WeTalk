@@ -90,8 +90,11 @@ public class AppUpdateController extends ABaseController {
      */
     @RequestMapping("/checkUpdate")
     @GlobalInterceptor
-    public BaseResponse<AppUpdateVO> checkUpdate(String version, String uid) {
-        return StringUtils.isEmpty(version) ? BaseResponse.success() : BaseResponse.success(appUpdateService.getLatestUpdate(version, uid));
+    public BaseResponse<AppUpdateVO> checkUpdate(HttpServletRequest request, String version, String uid) {
+        if (StringUtils.isEmpty(version)) return BaseResponse.success();
+        TokenUserInfoDto user = getTokenUserDto(request);
+        // Keep accepting uid for older clients, but never trust caller-supplied identity for gray releases.
+        return BaseResponse.success(appUpdateService.getLatestUpdate(version, user.getUserId()));
     }
 
     /**
