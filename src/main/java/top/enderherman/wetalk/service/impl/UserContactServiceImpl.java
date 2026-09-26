@@ -302,7 +302,7 @@ public class UserContactServiceImpl implements UserContactService {
             query.setStatus(UserContactStatusEnum.FRIEND.getStatus());
             Integer count = userContactMapper.selectCount(query);
             SysSettingDto sysSettingDto = redisComponent.getSysSetting();
-            if (count >= sysSettingDto.getMaxGroupCount()) {
+            if (count >= sysSettingDto.getMaxGroupMemberCount()) {
                 throw new BusinessException("成员已满");
             }
         }
