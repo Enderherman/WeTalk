@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import top.enderherman.wetalk.annotation.GlobalInterceptor;
 import top.enderherman.wetalk.common.BaseResponse;
+import top.enderherman.wetalk.common.ResponseCodeEnum;
 import top.enderherman.wetalk.component.RedisComponent;
 import top.enderherman.wetalk.config.AppConfig;
 import top.enderherman.wetalk.constants.Constants;
@@ -16,8 +17,10 @@ import top.enderherman.wetalk.entity.po.UserInfo;
 import top.enderherman.wetalk.entity.query.GroupInfoQuery;
 import top.enderherman.wetalk.entity.query.UserInfoQuery;
 import top.enderherman.wetalk.entity.vo.PaginationResultVO;
+import top.enderherman.wetalk.exception.BusinessException;
 import top.enderherman.wetalk.service.GroupInfoService;
 import top.enderherman.wetalk.service.UserInfoService;
+import top.enderherman.wetalk.utils.ImageUploadValidator;
 
 import jakarta.annotation.Resource;
 import jakarta.validation.constraints.NotNull;
@@ -114,17 +117,18 @@ public class ManageController extends ABaseController {
     public BaseResponse<?> saveSystemSetting(SysSettingDto sysSettingDto,
                                              MultipartFile robotAvatarFile,
                                              MultipartFile robotAvatarCoverFile) throws IOException {
-        if (robotAvatarFile != null) {
+        ImageUploadValidator.validate(robotAvatarFile);
+        ImageUploadValidator.validate(robotAvatarCoverFile);
+        sysSettingDto.setRobotUid(Constants.ROBOT_UID);
+        if (robotAvatarFile != null || robotAvatarCoverFile != null) {
             String baseFolder = appConfig.getProjectFolder() + Constants.FILE_FOLDER;
             File targetFileFolder = new File(baseFolder + Constants.AVATAR_FOLDER);
             if (!targetFileFolder.exists()) {
                 targetFileFolder.mkdirs();
             }
             String filePath = targetFileFolder.getPath() + "/" + Constants.ROBOT_UID + Constants.IMAGE_SUFFIX;
-            robotAvatarFile.transferTo(new File(filePath));
-            if (robotAvatarCoverFile != null) {
-                robotAvatarCoverFile.transferTo(new File(filePath + Constants.COVER_IMAGE_SUFFIX));
-            }
+            if (robotAvatarFile != null) robotAvatarFile.transferTo(new File(filePath));
+            if (robotAvatarCoverFile != null) robotAvatarCoverFile.transferTo(new File(filePath + Constants.COVER_IMAGE_SUFFIX));
         }
         redisComponent.saveSysSetting(sysSettingDto);
         return BaseResponse.success();

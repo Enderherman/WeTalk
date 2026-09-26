@@ -11,7 +11,7 @@ WeTalk 是 App 和 Web 共用的 Java 17 / Spring Boot 聊天服务。后端提�
 | 就绪检查 | GET /api/actuator/health/readiness |
 | 健康检查 | GET /api/actuator/health |
 | 登录态 | Web 使用 HttpOnly Cookie；Electron 兼容 token 请求头；失败业务码 901 |
-| 用户资料图片 | 头像/封面接受 PNG、JPEG、GIF、BMP、WebP；每个文件最多 10 MiB |
+| 头像/封面图片 | 用户资料和机器人头像接受 PNG、JPEG、GIF、BMP、WebP；扩展名、MIME 与文件签名需匹配，每个文件最多 10 MiB |
 | 返回值 | status、code、message、data；客户端按业务 code 判断结果 |
 | 账号注册 | 邮箱、密码、昵称、图片验证码；目前没有邮箱归属验证 |
 | AI | 默认不启用，无 AI 密钥也能启动普通聊天 |
@@ -20,7 +20,7 @@ WeTalk 是 App 和 Web 共用的 Java 17 / Spring Boot 聊天服务。后端提�
 
 ## 本次修复
 
-详见 [CHANGELOG.md](CHANGELOG.md)。重点修复了私聊附件越权、群解散误断开连接、离线同步时间、过期连接清理、Redis 密码/数据库配置、旧 token 残留和首次部署配置。同时启用 Jakarta 参数校验，管理员预留邮箱不能经公开注册获得权限，API 返回的用户对象不再含密码摘要。
+详见 [CHANGELOG.md](CHANGELOG.md)。重点修复了私聊附件越权、群解散误断开连接、离线同步时间、过期连接清理、Redis 密码/数据库配置、旧 token 残留和首次部署配置；群成员配额改为读取正确的 `maxGroupMemberCount`。机器人和用户头像/封面上传都会校验格式、文件签名和 10 MiB 上限。同时启用 Jakarta 参数校验，管理员预留邮箱不能经公开注册获得权限，API 返回的用户对象不再含密码摘要。
 
 管理员账号须由可信的数据库初始化或现有账号配置完成，ADMIN_EMAILS 只填写已核实身份的邮箱；不能依靠公开注册创建管理员。已有配置曾包含真实连接信息时，需要在实际服务上更换相应凭据，当前文件改为环境变量不会清理 Git 历史。
 
