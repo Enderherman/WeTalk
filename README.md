@@ -7,15 +7,15 @@ WeTalk 是 App 和 Web 共用的 Java 17 / Spring Boot 聊天服务。后端提�
 | 项目 | 默认地址/行为 |
 |---|---|
 | HTTP API | http://主机:5050/api |
-| WebSocket | ws://主机:5051/ws?token=登录返回的token |
+| WebSocket | Web: ws://主机:5051/ws?ticket=短时票据；Electron 兼容旧 token 参数 |
 | 就绪检查 | GET /api/actuator/health/readiness |
 | 健康检查 | GET /api/actuator/health |
-| 登录态 | REST 请求带 token 请求头；失败业务码 901 |
+| 登录态 | Web 使用 HttpOnly Cookie；Electron 兼容 token 请求头；失败业务码 901 |
 | 返回值 | status、code、message、data；客户端按业务 code 判断结果 |
 | 账号注册 | 邮箱、密码、昵称、图片验证码；目前没有邮箱归属验证 |
 | AI | 默认不启用，无 AI 密钥也能启动普通聊天 |
 
-生产反向代理应使用 HTTPS/WSS，并保持 /api、/ws 两个路径。健康接口仅返回 UP/DOWN，不公开配置或数据库详情；就绪检查同时检查 MySQL、Redis 和 WebSocket 是否成功绑定。
+生产反向代理应使用 HTTPS/WSS，并保持 /api、/ws 两个路径；HTTPS 部署设 WETALK_WEB_AUTH_COOKIE_SECURE=true。健康接口仅返回 UP/DOWN，不公开配置或数据库详情；就绪检查同时检查 MySQL、Redis 和 WebSocket 是否成功绑定。
 
 ## 本次修复
 
@@ -81,6 +81,7 @@ Spring Boot 不会自动读取本地 .env；本地直接运行 Java 时要由终
 | REDIS_USERNAME / REDIS_PASSWORD | 可选 ACL 用户和 Redis 密码 |
 | REDIS_SSL | false；启用时 Spring 和 Redisson 都使用 TLS |
 | PROJECT_FOLDER | 本地 ./data/；Docker /data/wetalk/ |
+| WETALK_WEB_AUTH_COOKIE_SECURE | false 本地开发；HTTPS 部署必须设为 true，启用 HttpOnly/SameSite Strict 的 Web 会话 Cookie |
 | HTTP_PORT / WS_PORT | 5050 / 5051；Compose 固定内部端口 |
 | ADMIN_EMAILS | 默认为空；可信的现有管理员邮箱，以逗号分隔 |
 | MAX_UPLOAD_SIZE | 500MB，HTTP 与文件请求上限 |

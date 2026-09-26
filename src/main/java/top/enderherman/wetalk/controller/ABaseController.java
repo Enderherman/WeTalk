@@ -5,6 +5,7 @@ import top.enderherman.wetalk.common.ResponseCodeEnum;
 import top.enderherman.wetalk.constants.Constants;
 import top.enderherman.wetalk.entity.dto.TokenUserInfoDto;
 import top.enderherman.wetalk.exception.BusinessException;
+import top.enderherman.wetalk.utils.AuthTokenResolver;
 import top.enderherman.wetalk.utils.RedisUtils;
 
 import jakarta.annotation.Resource;
@@ -76,7 +77,8 @@ public class ABaseController {
     }
 
     protected TokenUserInfoDto getTokenUserDto(HttpServletRequest request) {
-        String token = request.getHeader("token");
+        String token = AuthTokenResolver.resolve(request);
+        if (token == null) return null;
         return (TokenUserInfoDto) redisUtils.get(Constants.REDIS_KEY_WS_TOKEN +token);
     }
 }

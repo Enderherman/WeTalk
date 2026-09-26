@@ -1,6 +1,7 @@
 package top.enderherman.wetalk.utils;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.SerializationException;
 import org.springframework.stereotype.Component;
@@ -10,11 +11,16 @@ import top.enderherman.wetalk.exception.BusinessException;
 import jakarta.annotation.Resource;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Component("redisUtils")
 public class RedisUtils<V> {
+
+    private static final DefaultRedisScript<Object> GET_AND_DELETE_SCRIPT = new DefaultRedisScript<>(
+            "local value = redis.call('GET', KEYS[1]); if value then redis.call('DEL', KEYS[1]); end; return value",
+            Object.class);
 
     @Resource
     private RedisTemplate<String, V> redisTemplate;
@@ -28,6 +34,20 @@ public class RedisUtils<V> {
     public V get(String key) {
         try {
             return redisTemplate.opsForValue().get(key);
+        } catch (SerializationException e) {
+            log.error("Redis operation failed", e);
+            throw new BusinessException(ResponseCodeEnum.CODE_506);
+        }
+    }
+
+    /**
+     * Atomically read and remove a single-use value.
+     */
+    public V getAndDelete(String key) {
+        try {
+            @SuppressWarnings("unchecked")
+            V value = (V) redisTemplate.execute(GET_AND_DELETE_SCRIPT, Collections.singletonList(key));
+            return value;
         } catch (SerializationException e) {
             log.error("Redis operation failed", e);
             throw new BusinessException(ResponseCodeEnum.CODE_506);

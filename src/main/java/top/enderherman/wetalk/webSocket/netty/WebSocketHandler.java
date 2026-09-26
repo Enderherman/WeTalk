@@ -70,26 +70,34 @@ public class WebSocketHandler extends SimpleChannelInboundHandler<TextWebSocketF
         if (evt instanceof WebSocketServerProtocolHandler.HandshakeComplete) {
             WebSocketServerProtocolHandler.HandshakeComplete complete = (WebSocketServerProtocolHandler.HandshakeComplete) evt;
             String url = complete.requestUri();
-            String token = getToken(url);
-            if (StringUtils.isEmpty(token)) {
+            TokenUserInfoDto tokenUserInfoDto = authenticate(url);
+            if (tokenUserInfoDto == null) {
                 log.warn("WebSocket 握手缺少认证令牌");
                 ctx.channel().close();
                 return;
             }
-            TokenUserInfoDto tokenUserInfoDto = redisComponent.getTokenUserInfoDto(token);
-            if (tokenUserInfoDto == null) {
-                log.warn("WebSocket 握手认证失败");
-                ctx.channel().close();
-                return;
-            }
-
             channelContextUtils.addContext(tokenUserInfoDto.getUserId(), ctx.channel());
         }
     }
 
-    /**
-     * 获取token
-     */
+    private TokenUserInfoDto authenticate(String url) {
+        if (StringUtils.isEmpty(url)) return null;
+        try {
+            java.util.Map<String, java.util.List<String>> parameters =
+                    new io.netty.handler.codec.http.QueryStringDecoder(url).parameters();
+            java.util.List<String> tickets = parameters.get("ticket");
+            java.util.List<String> tokens = parameters.get("token");
+            if (tickets != null) {
+                if (tickets.size() != 1 || tokens != null) return null;
+                return redisComponent.consumeWebSocketTicket(tickets.get(0));
+            }
+            String token = getToken(url);
+            return StringUtils.isEmpty(token) ? null : redisComponent.getTokenUserInfoDto(token);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
     private String getToken(String url) {
         if (StringUtils.isEmpty(url)) return null;
         try {

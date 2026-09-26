@@ -55,6 +55,15 @@ public class RedisComponent {
         return (TokenUserInfoDto) redisUtils.get(Constants.REDIS_KEY_WS_TOKEN + token);
     }
 
+    public void saveWebSocketTicket(String ticket, TokenUserInfoDto user) {
+        redisUtils.setEx(Constants.REDIS_KEY_WS_TICKET + ticket, user, Constants.REDIS_KEY_EXPIRES_WS_TICKET);
+    }
+
+    public TokenUserInfoDto consumeWebSocketTicket(String ticket) {
+        if (ticket == null || ticket.isBlank()) return null;
+        return (TokenUserInfoDto) redisUtils.getAndDelete(Constants.REDIS_KEY_WS_TICKET + ticket);
+    }
+
     /**
      * 获取用户Token by id
      */

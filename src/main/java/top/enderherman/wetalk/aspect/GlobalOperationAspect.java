@@ -16,6 +16,7 @@ import top.enderherman.wetalk.common.ResponseCodeEnum;
 import top.enderherman.wetalk.constants.Constants;
 import top.enderherman.wetalk.entity.dto.TokenUserInfoDto;
 import top.enderherman.wetalk.exception.BusinessException;
+import top.enderherman.wetalk.utils.AuthTokenResolver;
 import top.enderherman.wetalk.utils.RedisUtils;
 import top.enderherman.wetalk.utils.StringUtils;
 
@@ -62,7 +63,7 @@ public class GlobalOperationAspect {
 
     private void validateLogin(Boolean checkAdmin) {
         HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes()).getRequest();
-        String token = request.getHeader("token");
+        String token = AuthTokenResolver.resolve(request);
         if(StringUtils.isEmpty(token)){
             throw new BusinessException(ResponseCodeEnum.CODE_901);
         }

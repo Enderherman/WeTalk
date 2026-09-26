@@ -68,6 +68,8 @@ admin:
 wetalk:
   ai:
     enabled: ${WETALK_AI_ENABLED:false}
+  web:
+    auth-cookie-secure: ${WETALK_WEB_AUTH_COOKIE_SECURE:false}
 management:
   endpoints:
     web:

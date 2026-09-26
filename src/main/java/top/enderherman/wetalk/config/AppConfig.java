@@ -32,4 +32,7 @@ public class AppConfig {
      */
     @Value("${admin.emails:}")
     private String adminEmails;
+
+    @Value("${wetalk.web.auth-cookie-secure:false}")
+    private boolean webAuthCookieSecure;
 }
