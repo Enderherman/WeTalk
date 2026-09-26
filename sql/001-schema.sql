@@ -1,4 +1,5 @@
 -- WeTalk empty-database initialization; exported from actual local MySQL.
+-- Selected target schema: wetalk.
 -- Table definitions only: no accounts, password hashes, messages or local data.
 -- Execute only against a new empty database. This is not an upgrade script.
 

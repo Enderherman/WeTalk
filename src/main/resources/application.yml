@@ -34,7 +34,7 @@ spring:
     retry:
       max-attempts: 3
   datasource:
-    url: ${DB_URL:jdbc:mysql://127.0.0.1:3306/easychat?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    url: ${DB_URL:jdbc:mysql://127.0.0.1:3306/wetalk?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
     username: ${DB_USERNAME:wetalk}
     password: ${DB_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver

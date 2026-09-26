@@ -43,5 +43,7 @@ dist/
 .private/
 secrets/
 config/redis.conf
+__pycache__/
+*.py[cod]
 *.tar
 *.zip

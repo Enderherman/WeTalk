@@ -1,6 +1,6 @@
 # 初始化 SQL
 
-001-schema.sql 来自本机后端实际使用的 MySQL 8.0.31 easychat 数据库，以 mysqldump --no-data 导出以下 9 张表：
+001-schema.sql 来自本机后端实际使用的 MySQL 8.0.31 wetalk 数据库，以 mysqldump --no-data 导出以下 9 张表：
 
 app_update、chat_message、chat_session、chat_session_user、group_info、user_contact、user_contact_apply、user_info、user_info_beauty。
 
@@ -13,7 +13,7 @@ app_update、chat_message、chat_session、chat_session_user、group_info、user
 重新导出时，通过私有的 MySQL defaults 文件提供凭据：
 
 ~~~shell
-python scripts/export_schema.py --defaults-file /private/mysql-export.cnf --database easychat
+python scripts/export_schema.py --defaults-file /private/mysql-export.cnf --database wetalk
 ~~~
 
 defaults 文件必须保存在 Git 忽略的私有目录，不能把密码写在命令参数或提交到 Git。

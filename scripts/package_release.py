@@ -17,6 +17,7 @@ with zipfile.ZipFile(JAR) as jar:
     assert "BOOT-INF/classes/top/enderherman/wetalk/WeTalkApplication.class" in jar.namelist()
     settings = jar.read("BOOT-INF/classes/application.yml").decode()
     assert "${DB_PASSWORD:}" in settings and "${OPENAI_API_KEY:}" in settings
+    assert "3306/wetalk?" in settings, "JAR must use the current database name"
 
 reports = list((ROOT / "target/surefire-reports").glob("TEST-*.xml"))
 assert reports, "No test reports found"
@@ -35,7 +36,8 @@ files = {
     name: (ROOT / name).read_bytes()
     for name in ("target/wetalk.jar", "Dockerfile", "compose.yaml",
                  "compose.infra.yaml", "compose.nas.yaml", "sql/001-schema.sql",
-                 "scripts/prepare_infra.py",
+                 "sql/README.md", "scripts/prepare_infra.py",
+                 "scripts/export_schema.py", "scripts/rename_database.py",
                  ".env.example", "README.md", "CHANGELOG.md")
 }
 commit = subprocess.check_output(
@@ -47,6 +49,7 @@ dirty = bool(subprocess.check_output(
 info = {
     "version": VERSION, "sourceCommit": commit,
     "sourceDirty": dirty,
+    "databaseName": "wetalk",
     "packagedAt": datetime.now(timezone.utc).isoformat(),
     "tests": totals, "jarSha256": sha(files["target/wetalk.jar"]),
     "baseImage": "eclipse-temurin:17-jre-jammy",

@@ -40,7 +40,7 @@ redis_config.write_text(
 env = root / ".env"
 env.write_text(
     f"NAS_BIND_IP={args.bind_ip}\nMYSQL_PUBLISHED_PORT=13306\nREDIS_PUBLISHED_PORT=16379\n"
-    "DB_URL=jdbc:mysql://wetalk-mysql:3306/easychat?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai\n"
+    "DB_URL=jdbc:mysql://wetalk-mysql:3306/wetalk?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai\n"
     f"DB_USERNAME=wetalk\nDB_PASSWORD={mysql_app}\n"
     f"REDIS_HOST=wetalk-redis\nREDIS_PORT=6379\nREDIS_PASSWORD={redis_password}\n"
     "REDIS_DATABASE=0\nADMIN_EMAILS=\nWETALK_AI_ENABLED=false\nWETALK_AI_MODEL=none\n"

@@ -31,9 +31,26 @@ WeTalk 是 App 和 Web 共用的 Java 17 / Spring Boot 聊天服务。后端提�
 - 可写的文件目录，重启容器时必须保留。
 - AI 使用 OpenAI 兼容接口时，还需要相应 provider/model/API Key。
 
-sql/001-schema.sql 已从本机实际使用的 MySQL 8.0.31 easychat 导出，包含 9 张业务表的字段、索引和字符集，不含用户、密码摘要、聊天记录等私有数据。它只用于空数据库初始化，不是已有数据库升级脚本；参见 [SQL 说明](sql/README.md)。演示账号和管理员账号另行创建，旧数据库/文件的数据迁移需单独备份处理。
+sql/001-schema.sql 已从本机实际使用的 MySQL 8.0.31 wetalk 导出，包含 9 张业务表的字段、索引和字符集，不含用户、密码摘要、聊天记录等私有数据。它只用于空数据库初始化，不是已有数据库升级脚本；参见 [SQL 说明](sql/README.md)。演示账号和管理员账号另行创建，旧数据库/文件的数据迁移需单独备份处理。
 
 本项目没有 Maven Wrapper，下面使用安装好的 mvn。
+
+## 数据库统一命名为 wetalk
+
+后端默认 JDBC 地址、Docker 首次初始化、MySQL 健康检查、环境模板和准备/导出脚本均使用 wetalk。已有环境的 DB_URL 也必须指向 /wetalk。
+
+本机已有的 easychat 数据库采用一次 RENAME TABLE 将 9 张 InnoDB 业务表整体迁到 wetalk，原有记录和索引保持。迁移前保留全量私有备份，迁移后逐表核对行数和 CHECKSUM；旧 easychat 保留为空 schema，便于回退，没有 DROP DATABASE。MySQL 的[跨库重命名说明](https://dev.mysql.com/doc/refman/8.0/en/rename-table.html)解释了该操作和触发器等限制。
+
+对其他已经运行的旧环境，先停止后端并关闭旧库连接；脚本默认只检查，--apply 才执行：
+
+~~~shell
+python scripts/rename_database.py --defaults-file /private/mysql.cnf
+python scripts/rename_database.py --defaults-file /private/mysql.cnf --apply
+~~~
+
+脚本只处理已知 9 张 InnoDB 表，拒绝有对象的目标库及触发器/存储过程/事件等复杂场景；会把备份与回退 SQL 放入 Git 忽略的 .private/db-backups。默认旧库 easychat、新库 wetalk；不改变账号授权。若原数据库账号只授权 easychat.*，须由管理员重新授予 wetalk 的相应最小权限。
+
+对已初始化的 MySQL Docker 数据目录，仅修改 MYSQL_DATABASE 环境变量不会更名数据库；不要删除数据目录来重跑初始化。新部署则由 compose.infra.yaml 创建 wetalk 并导入空表结构。NAS 当前部署仍暂停，先前传到 NAS 的构建包恢复部署时需要替换为本次新包。
 
 ## 本地构建与测试
 
@@ -56,7 +73,7 @@ Spring Boot 不会自动读取本地 .env；本地直接运行 Java 时要由终
 
 | 变量 | 默认/要求 |
 |---|---|
-| DB_URL | 默认 localhost:3306/easychat；NAS 上必须填真实 JDBC 地址 |
+| DB_URL | 默认 localhost:3306/wetalk；NAS 上必须填真实 JDBC 地址 |
 | DB_USERNAME / DB_PASSWORD | 专用数据库账号和密码；默认 wetalk / 空密码只作本地占位 |
 | DB_POOL_SIZE | 10 |
 | REDIS_HOST / REDIS_PORT | 127.0.0.1 / 6379；容器内 localhost 指容器本身 |
@@ -80,7 +97,7 @@ Spring Boot 不会自动读取本地 .env；本地直接运行 Java 时要由终
 
 compose.infra.yaml 用官方 MySQL 8.4、Redis 7.4 创建两个独立容器，分别名为 wetalk-mysql 和 wetalk-redis。它们共用 wetalk-net 网络，数据保存在该专用目录的 data/mysql 和 data/redis。
 
-准备脚本会随机生成独立的 MySQL root 密码、应用数据库密码和 Redis 密码；密码保存在 .env、secrets/ 和 config/redis.conf，不会打印或提交到 Git。MySQL root 限制为本机登录，应用账号 wetalk 仅用于 easychat 数据库。默认发布地址是 127.0.0.1，需要局域网开发时显式指定 NAS 的 LAN IP。
+准备脚本会随机生成独立的 MySQL root 密码、应用数据库密码和 Redis 密码；密码保存在 .env、secrets/ 和 config/redis.conf，不会打印或提交到 Git。MySQL root 限制为本机登录，应用账号 wetalk 仅用于 wetalk 数据库。默认发布地址是 127.0.0.1，需要局域网开发时显式指定 NAS 的 LAN IP。
 
 ~~~shell
 cd /volume2/docker/wetalk
