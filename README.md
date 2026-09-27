@@ -65,7 +65,7 @@ python scripts/rename_database.py --defaults-file /private/mysql.cnf --apply
 
 脚本只处理已知 9 张 InnoDB 表，拒绝有对象的目标库及触发器/存储过程/事件等复杂场景；会把备份与回退 SQL 放入 Git 忽略的 .private/db-backups。默认旧库 easychat、新库 wetalk；不改变账号授权。若原数据库账号只授权 easychat.*，须由管理员重新授予 wetalk 的相应最小权限。
 
-对已初始化的 MySQL Docker 数据目录，仅修改 MYSQL_DATABASE 环境变量不会更名数据库；不要删除数据目录来重跑初始化。新部署则由 compose.infra.yaml 创建 wetalk 并导入空表结构。截至 2026-09-28，NAS 内网部署已完成：后端镜像 `wetalk-backend:0.0.2` 已启动，readiness 返回 `UP`；保留了原有 MySQL/Redis 容器与数据卷，数据库逻辑备份后应用 SQL 002/003 迁移。后端宿主机端口为回环绑定的 15050/15051，网页经共享 `wetalk-net` 同源代理访问。双账号注册登录、WebSocket、联系人申请、私聊、幂等重试、历史和 type 17 已读回执通过 NAS 实测；临时数据已清理。备份恢复演练、HTTPS/WSS 和实体手机验收仍待完成。
+对已初始化的 MySQL Docker 数据目录，仅修改 MYSQL_DATABASE 环境变量不会更名数据库；不要删除数据目录来重跑初始化。新部署则由 compose.infra.yaml 创建 wetalk 并导入空表结构。截至 2026-09-28，NAS 内网部署已完成：后端镜像 `wetalk-backend:0.0.2` 已启动，readiness 返回 `UP`；保留了原有 MySQL/Redis 容器与数据卷，数据库逻辑备份后应用 SQL 002/003 迁移。后端宿主机端口为回环绑定的 15050/15051，网页经共享 `wetalk-net` 同源代理访问。双账号注册登录、WebSocket、联系人申请、私聊、幂等重试、历史、type 17 已读回执及一个临时文本附件的 NAS 上传/下载字节校验均通过；临时数据和文件已清理。数据库逻辑备份已在隔离 MySQL 容器中恢复并重新应用迁移，字段/索引读回通过；文件目录恢复、应用镜像回滚、HTTPS/WSS 和实体手机验收仍待完成。
 
 ## 本地构建与测试
 
