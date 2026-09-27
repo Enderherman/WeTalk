@@ -36,6 +36,8 @@ files = {
     name: (ROOT / name).read_bytes()
     for name in ("target/wetalk.jar", "Dockerfile", "compose.yaml",
                  "compose.infra.yaml", "compose.nas.yaml", "sql/001-schema.sql",
+                 "sql/002-client-message-idempotency.sql",
+                 "sql/003-persistent-unread-cursor.sql",
                  "sql/README.md", "scripts/prepare_infra.py",
                  "scripts/export_schema.py", "scripts/rename_database.py",
                  ".env.example", "README.md", "CHANGELOG.md")
