@@ -1,5 +1,6 @@
 package top.enderherman.wetalk.entity.po;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 import top.enderherman.wetalk.entity.enums.UserContactTypeEnum;
 
@@ -52,6 +53,13 @@ public class ChatSessionUser implements Serializable {
      * 群组人数
      */
     private Integer memberCount;
+
+    /** 当前用户已读到的最大消息 ID */
+    @JsonIgnore
+    private Integer lastReadMessageId;
+
+    /** 当前会话未读消息数，由会话列表查询计算 */
+    private Integer noReadCount;
 
 
     public Integer getContactType() {

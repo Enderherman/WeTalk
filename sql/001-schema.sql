@@ -48,6 +48,7 @@ CREATE TABLE `chat_message` (
   PRIMARY KEY (`message_id`),
   UNIQUE KEY `uk_chat_message_send_client` (`send_user_id`,`client_message_id`),
   KEY `idx_session_id` (`session_id`) USING BTREE,
+  KEY `idx_session_message_id` (`session_id`,`message_id`) USING BTREE,
   KEY `idx_send_user_id` (`send_user_id`) USING BTREE,
   KEY `idx_receive_contact_id` (`contact_id`) USING BTREE,
   KEY `idx_send_time` (`send_time`) USING BTREE
@@ -69,6 +70,7 @@ CREATE TABLE `chat_session_user` (
   `contact_id` varchar(12) NOT NULL COMMENT '联系人id',
   `session_id` varchar(32) NOT NULL COMMENT '会话id',
   `contact_name` varchar(20) DEFAULT NULL COMMENT '联系人名称',
+  `last_read_message_id` int NOT NULL DEFAULT '0' COMMENT '该用户已读到的最大消息ID',
   PRIMARY KEY (`user_id`,`contact_id`) USING BTREE,
   KEY `idx_user_id` (`user_id`) USING BTREE,
   KEY `idx_session_id` (`session_id`) USING BTREE

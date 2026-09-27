@@ -244,6 +244,7 @@ public class GroupInfoServiceImpl implements GroupInfoService {
             chatMessage.setContactType(UserContactTypeEnum.GROUP.getType());
             chatMessage.setStatus(MessageStatusEnum.SENT.getStatus());
             chatMessageMapper.insert(chatMessage);
+            chatSessionUserMapper.updateLastReadMessageId(groupInfo.getGroupOwnId(), sessionId, chatMessage.getMessageId());
             //2.4 群组添加到联系人联系人缓存中
             redisComponent.saveContact(groupInfo.getGroupOwnId(), groupInfo.getGroupId());
             //2.5 将联系人通道添加到群组通道

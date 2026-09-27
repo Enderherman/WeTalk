@@ -47,6 +47,16 @@ class ChatValidationTest {
         }
     }
 
+    @Test void markReadRequiresAPositiveMessageId() {
+        try (var factory = Validation.buildDefaultValidatorFactory()) {
+            ProxyFactory proxy = new ProxyFactory(new ChatController());
+            proxy.addAdvice(new MethodValidationInterceptor(factory.getValidator()));
+            ChatController controller = (ChatController) proxy.getProxy();
+            assertThrows(ConstraintViolationException.class,
+                    () -> controller.markRead(null, "Upeer", 0));
+        }
+    }
+
     @Test void ordinaryFileUploadsDoNotRequireAnImageCover() {
         ChatController target = new ChatController();
         RedisUtils redis = mock(RedisUtils.class);

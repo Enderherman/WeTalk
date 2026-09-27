@@ -35,6 +35,9 @@ public interface ChatMessageService {
 	/** 按联系人读取当前用户可访问的历史消息 */
 	PaginationResultVO<ChatMessage> loadHistory(TokenUserInfoDto userInfo, String contactId, Integer beforeMessageId, Integer pageSize);
 
+	/** Persist the highest message ID the current user has read in a conversation. */
+	void markRead(TokenUserInfoDto userInfo, String contactId, Integer messageId);
+
 	/**
 	 * 新增
 	 */

@@ -16,15 +16,18 @@ import top.enderherman.wetalk.entity.dto.TokenUserInfoDto;
 import top.enderherman.wetalk.entity.enums.*;
 import top.enderherman.wetalk.entity.po.ChatMessage;
 import top.enderherman.wetalk.entity.po.ChatSession;
+import top.enderherman.wetalk.entity.po.ChatSessionUser;
 import top.enderherman.wetalk.entity.po.UserContact;
 import top.enderherman.wetalk.entity.query.ChatMessageQuery;
 import top.enderherman.wetalk.entity.query.ChatSessionQuery;
+import top.enderherman.wetalk.entity.query.ChatSessionUserQuery;
 import top.enderherman.wetalk.entity.query.SimplePage;
 import top.enderherman.wetalk.entity.query.UserContactQuery;
 import top.enderherman.wetalk.entity.vo.PaginationResultVO;
 import top.enderherman.wetalk.exception.BusinessException;
 import top.enderherman.wetalk.mappers.ChatMessageMapper;
 import top.enderherman.wetalk.mappers.ChatSessionMapper;
+import top.enderherman.wetalk.mappers.ChatSessionUserMapper;
 import top.enderherman.wetalk.mappers.UserContactMapper;
 import top.enderherman.wetalk.service.ChatMessageService;
 import top.enderherman.wetalk.service.AiService;
@@ -78,6 +81,9 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     @Resource
     private ChatSessionMapper<ChatSession, ChatSessionQuery> chatSessionMapper;
+
+    @Resource
+    private ChatSessionUserMapper<ChatSessionUser, ChatSessionUserQuery> chatSessionUserMapper;
 
     @Resource
     private ChatMessageMapper<ChatMessage, ChatMessageQuery> chatMessageMapper;
@@ -157,6 +163,32 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         PaginationResultVO<ChatMessage> result = findListByPage(query);
         Collections.reverse(result.getList());
         return result;
+    }
+
+    @Override
+    public void markRead(TokenUserInfoDto userInfo, String contactId, Integer messageId) {
+        if (userInfo == null || userInfo.getUserId() == null || contactId == null || messageId == null || messageId < 1) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
+        UserContactTypeEnum contactType = UserContactTypeEnum.getByPrefix(contactId);
+        if (contactType == null) throw new BusinessException(ResponseCodeEnum.CODE_600);
+        List<String> userContactList = redisComponent.getUserContactList(userInfo.getUserId());
+        if (userContactList == null || !userContactList.contains(contactId)) {
+            throw new BusinessException(contactType == UserContactTypeEnum.USER
+                    ? ResponseCodeEnum.CODE_902
+                    : ResponseCodeEnum.CODE_903);
+        }
+
+        String sessionId = contactType == UserContactTypeEnum.USER
+                ? StringUtils.getChatSessionId4User(new String[]{userInfo.getUserId(), contactId})
+                : StringUtils.getChatSessionId4Group(contactId);
+        ChatSessionUser sessionUser = chatSessionUserMapper.selectByUserIdAndContactId(userInfo.getUserId(), contactId);
+        ChatMessage message = chatMessageMapper.selectByMessageId(messageId);
+        if (sessionUser == null || !sessionId.equals(sessionUser.getSessionId())
+                || message == null || !sessionId.equals(message.getSessionId())) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
+        chatSessionUserMapper.updateLastReadMessageId(userInfo.getUserId(), sessionId, messageId);
     }
 
     /**

@@ -11,6 +11,7 @@ app_update、chat_message、chat_session、chat_session_user、group_info、user
 已有数据库升级使用单独的顺序迁移脚本，不要重复执行：
 
 - `002-client-message-idempotency.sql` 为 `chat_message` 增加可空客户端幂等键及发送者组合唯一索引；旧桌面客户端不传该字段时仍可写入多条 `NULL`。
+- `003-persistent-unread-cursor.sql` 为每个用户/会话映射保存已读消息游标，并添加未读统计索引；迁移时把既有会话历史标为已读，避免升级后突然出现历史未读数。
 - 应先备份数据库，再手工应用迁移并验证列/索引存在，然后部署需要该字段的后端版本。
 
 管理员账号、演示账号和测试联系人需后续明确初始化；注册流程会使用代码中的默认系统配置创建机器人联系人和欢迎消息。

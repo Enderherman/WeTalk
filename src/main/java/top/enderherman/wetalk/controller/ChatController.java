@@ -128,6 +128,17 @@ public class ChatController extends ABaseController {
         return BaseResponse.success(chatMessageService.loadHistory(tokenUserInfoDto, contactId, beforeMessageId, pageSize));
     }
 
+    /** Advance the authenticated user's read cursor for a conversation. */
+    @GlobalInterceptor
+    @PostMapping("/markRead")
+    public BaseResponse<Void> markRead(HttpServletRequest request,
+                                       @NotNull String contactId,
+                                       @NotNull @Min(1) Integer messageId) {
+        TokenUserInfoDto tokenUserInfoDto = getTokenUserDto(request);
+        chatMessageService.markRead(tokenUserInfoDto, contactId, messageId);
+        return BaseResponse.success();
+    }
+
     /**
      * 文件上传
      */

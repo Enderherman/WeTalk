@@ -1,3 +1,9 @@
+## 持久化会话未读游标（2026-09-27）
+
+- 为 `chat_session_user` 增加每账号/会话的 `last_read_message_id`，WebSocket INIT 的会话列表返回其后的未读消息数 `noReadCount`。
+- 新增成员鉴权的 `POST /api/chat/markRead`，只推进游标，不允许旧请求将已读位置倒退；新增迁移 `sql/003-persistent-unread-cursor.sql`，部署前需备份。
+- Maven clean verify 81 项通过。真实后端双账号验证 INIT 未读 2 条、标记已读后变为 0、较旧游标不会回退、新消息再变为 1；测试账号、关系、消息和限流/ticket 键已清理。
+
 ## 文字消息幂等重试（2026-09-27）
 
 - `/chat/sendMessage` 接受可选 UUID `clientMessageId`；同一发送者以相同键和相同内容重试时返回原消息，不重复插入或重复推送；复用键但更改收件人/内容会被拒绝。未传该字段的旧桌面客户端保持兼容。

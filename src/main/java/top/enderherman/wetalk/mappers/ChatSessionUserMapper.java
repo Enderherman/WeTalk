@@ -24,5 +24,10 @@ public interface ChatSessionUserMapper<T,P> extends BaseMapper<T,P> {
 	 */
 	 T selectByUserIdAndContactId(@Param("userId") String userId,@Param("contactId") String contactId);
 
+	/** Advance a member's read cursor without allowing it to move backwards. */
+	 Integer updateLastReadMessageId(@Param("userId") String userId,
+	                                @Param("sessionId") String sessionId,
+	                                @Param("messageId") Integer messageId);
+
 
 }

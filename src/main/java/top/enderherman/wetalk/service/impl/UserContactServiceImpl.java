@@ -430,6 +430,7 @@ public class UserContactServiceImpl implements UserContactService {
             chatMessage.setContactType(UserContactTypeEnum.GROUP.getType());
             chatMessage.setStatus(MessageStatusEnum.SENT.getStatus());
             chatMessageMapper.insert(chatMessage);
+            chatSessionUserMapper.updateLastReadMessageId(applyUserId, sessionId, chatMessage.getMessageId());
 
 
 

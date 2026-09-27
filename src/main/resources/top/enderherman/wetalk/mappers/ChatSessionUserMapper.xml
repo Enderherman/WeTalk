@@ -12,13 +12,15 @@
 		<!--会话id-->
 		<result column="session_id" property="sessionId"  />
 		<!--联系人名称-->
-		<result column="contact_name" property="contactName"  />
+                <result column="contact_name" property="contactName"  />
+                <result column="last_read_message_id" property="lastReadMessageId" />
+                <result column="noReadCount" property="noReadCount" />
 	</resultMap>
 
 
 	<!-- 通用查询结果列-->
 	<sql id="base_column_list">
-		 user_id,contact_id,session_id,contact_name
+                 user_id,contact_id,session_id,contact_name,last_read_message_id
 	</sql>
 
 	<sql id="base_condition_filed">
@@ -65,6 +67,9 @@
 	<select id="selectList" resultMap="base_result_map" >
         SELECT
         u.*,c.last_message as lastMessage,c.last_receive_time as lastReceiveTime,
+        COALESCE((select count(1) from chat_message m where m.session_id=u.session_id
+        and m.message_id>COALESCE(u.last_read_message_id,0)
+        and (m.send_user_id is null or m.send_user_id &lt;&gt; u.user_id)),0) as noReadCount,
         case when substring(contact_id,1,1)='G'
         then (select count(1) from user_contact uc where uc.contact_id=u.contact_id)
         else 0
@@ -256,5 +261,11 @@
 	<select id="selectByUserIdAndContactId" resultMap="base_result_map" >
 		select <include refid="base_column_list" /> from chat_session_user where user_id=#{userId} and contact_id=#{contactId}
 	</select>
+
+        <update id="updateLastReadMessageId">
+                update chat_session_user
+                set last_read_message_id=GREATEST(last_read_message_id,#{messageId})
+                where user_id=#{userId} and session_id=#{sessionId}
+        </update>
 
 </mapper>
