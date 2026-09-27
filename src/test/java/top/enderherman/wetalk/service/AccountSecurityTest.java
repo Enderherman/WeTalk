@@ -13,15 +13,18 @@ import top.enderherman.wetalk.entity.po.UserContact;
 import top.enderherman.wetalk.entity.query.UserContactQuery;
 import top.enderherman.wetalk.entity.vo.UserInfoVO;
 import top.enderherman.wetalk.entity.enums.UserStatusEnum;
+import top.enderherman.wetalk.entity.enums.SessionDeviceType;
+import top.enderherman.wetalk.entity.dto.TokenUserInfoDto;
 import top.enderherman.wetalk.exception.BusinessException;
+import top.enderherman.wetalk.webSocket.ChannelContextUtils;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 class AccountSecurityTest {
- UserInfoServiceImpl service;RedisComponent redis;UserInfoMapper users;UserContactMapper<UserContact, UserContactQuery> contacts;MessageHandler handler;
+  UserInfoServiceImpl service;RedisComponent redis;UserInfoMapper users;UserContactMapper<UserContact, UserContactQuery> contacts;MessageHandler handler;ChannelContextUtils channels;
  @BeforeEach void setup() {
-  service=new UserInfoServiceImpl();redis=mock(RedisComponent.class);users=mock(UserInfoMapper.class);contacts=mock(UserContactMapper.class);handler=mock(MessageHandler.class);
+   service=new UserInfoServiceImpl();redis=mock(RedisComponent.class);users=mock(UserInfoMapper.class);contacts=mock(UserContactMapper.class);handler=mock(MessageHandler.class);channels=mock(ChannelContextUtils.class);
   ReflectionTestUtils.setField(service,"redisComponent",redis);ReflectionTestUtils.setField(service,"userInfoMapper",users);ReflectionTestUtils.setField(service,"messageHandler",handler);
-  ReflectionTestUtils.setField(service,"userContactMapper",contacts);ReflectionTestUtils.setField(service,"appConfig",new AppConfig());
+   ReflectionTestUtils.setField(service,"userContactMapper",contacts);ReflectionTestUtils.setField(service,"appConfig",new AppConfig());ReflectionTestUtils.setField(service,"channelContextUtils",channels);
  }
  @Test void forcedLogoutInvalidatesRestCredentialsWithoutAnOpenSocket() {
   service.forcedOffOnline("Uuser");verify(redis).clearTokenUserInfoDto("Uuser");verify(handler).sendMessage(any());
@@ -42,15 +45,20 @@ class AccountSecurityTest {
  @Test void onlineStateHandlesNullOfflineTimestamp() {
   UserInfo user=new UserInfo();user.setLastLoginTime(new java.util.Date());assertDoesNotThrow(user::getOnlineType);
  }
- @Test void loginAllowsASecondDeviceWhileTheAccountAlreadyHasAHeartbeat() {
+ @Test void sameTypeLoginReplacesThePreviousSessionAndClosesItsSocket() {
   UserInfo user=new UserInfo();user.setUserId("Uuser");user.setEmail("student@example.test");user.setPassword("compatible-digest");
   user.setNickName("Student");user.setStatus(UserStatusEnum.ENABLE.getStatus());
   when(users.selectByEmail(user.getEmail())).thenReturn(user);
   when(contacts.selectList(any())).thenReturn(java.util.List.of());
   when(redis.getUserHeartBeat(user.getUserId())).thenReturn(System.currentTimeMillis());
+  TokenUserInfoDto replaced=TokenUserInfoDto.builder().userId("Uuser").sessionId("old-browser-session").build();
+  when(redis.replaceSameTypeLoginSession(any())).thenReturn(java.util.List.of(replaced));
 
-  UserInfoVO result=service.login(user.getEmail(),"compatible-digest");
+  UserInfoVO result=service.login(user.getEmail(),"compatible-digest",SessionDeviceType.BROWSER,"Chrome · Windows");
 
-  assertNotNull(result.getToken());verify(redis).saveTokenUserInfoDto(argThat(dto->dto.getUserId().equals("Uuser")));
+  assertNotNull(result.getToken());
+  verify(redis).replaceSameTypeLoginSession(argThat(dto->dto.getUserId().equals("Uuser")
+          && dto.getDeviceType().equals("browser") && dto.getDeviceName().equals("Chrome · Windows")));
+  verify(channels).closeSession("Uuser","old-browser-session");
  }
 }

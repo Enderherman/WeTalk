@@ -30,6 +30,7 @@ import top.enderherman.wetalk.service.UserInfoService;
 import top.enderherman.wetalk.utils.CopyUtils;
 import top.enderherman.wetalk.utils.ImageUploadValidator;
 import top.enderherman.wetalk.utils.StringUtils;
+import top.enderherman.wetalk.webSocket.ChannelContextUtils;
 import top.enderherman.wetalk.webSocket.MessageHandler;
 
 import jakarta.annotation.Resource;
@@ -54,6 +55,9 @@ public class UserInfoServiceImpl implements UserInfoService {
 
     @Resource
     private MessageHandler messageHandler;
+
+    @Resource
+    private ChannelContextUtils channelContextUtils;
 
     @Resource
     private UserContactService userContactService;
@@ -248,6 +252,11 @@ public class UserInfoServiceImpl implements UserInfoService {
      */
     @Override
     public UserInfoVO login(String email, String password) {
+        return login(email, password, SessionDeviceType.DESKTOP, "WeTalkApp");
+    }
+
+    @Override
+    public UserInfoVO login(String email, String password, SessionDeviceType deviceType, String deviceName) {
         UserInfo userInfo = userInfoMapper.selectByEmail(email);
 
         if (userInfo == null || !userInfo.getPassword().equals(password)) {
@@ -270,8 +279,15 @@ public class UserInfoServiceImpl implements UserInfoService {
         }
 
         TokenUserInfoDto dto = getTokenUserInfoDto(userInfo);
-        //存储登录信息到redis中
-        redisComponent.saveTokenUserInfoDto(dto);
+        SessionDeviceType resolvedDeviceType = deviceType == null ? SessionDeviceType.DESKTOP : deviceType;
+        dto.setDeviceType(resolvedDeviceType.getValue());
+        dto.setDeviceName(deviceName == null || deviceName.isBlank() ? "未知设备" : deviceName);
+        List<TokenUserInfoDto> replacedSessions = redisComponent.replaceSameTypeLoginSession(dto);
+        if (channelContextUtils != null && replacedSessions != null) {
+            for (TokenUserInfoDto replaced : replacedSessions) {
+                channelContextUtils.closeSession(userInfo.getUserId(), replaced.getSessionId());
+            }
+        }
 
         UserInfoVO userInfoVO = CopyUtils.copy(userInfo, UserInfoVO.class);
         userInfoVO.setToken(dto.getToken());

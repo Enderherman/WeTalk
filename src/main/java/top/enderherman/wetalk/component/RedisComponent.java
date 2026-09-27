@@ -5,12 +5,15 @@ import org.springframework.stereotype.Component;
 import top.enderherman.wetalk.constants.Constants;
 import top.enderherman.wetalk.entity.dto.SysSettingDto;
 import top.enderherman.wetalk.entity.dto.TokenUserInfoDto;
+import top.enderherman.wetalk.entity.enums.SessionDeviceType;
+import top.enderherman.wetalk.exception.BusinessException;
 import top.enderherman.wetalk.utils.RedisUtils;
 
 import jakarta.annotation.Resource;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -50,6 +53,61 @@ public class RedisComponent {
         redisUtils.listPush(sessionsKey, dto.getSessionId(), ttl);
         redisUtils.setEx(Constants.REDIS_KEY_WS_SESSION + dto.getSessionId(), dto, ttl);
         redisUtils.setEx(Constants.REDIS_KEY_WS_TOKEN + dto.getToken(), dto, ttl);
+    }
+
+    public List<TokenUserInfoDto> replaceSameTypeLoginSession(TokenUserInfoDto newSession) {
+        if (newSession == null || newSession.getUserId() == null || newSession.getToken() == null) {
+            return List.of();
+        }
+        SessionDeviceType deviceType = SessionDeviceType.fromValue(newSession.getDeviceType());
+        if (deviceType == null) throw new BusinessException("登录设备类型无效");
+        initializeSessionMetadata(newSession);
+
+        String lockKey = Constants.REDIS_KEY_WS_LOGIN_LOCK + newSession.getUserId();
+        String lockToken = UUID.randomUUID().toString();
+        long deadline = System.nanoTime() + 5_000_000_000L;
+        boolean acquired = false;
+        while (!acquired && System.nanoTime() < deadline) {
+            acquired = redisUtils.tryAcquireLock(lockKey, lockToken, 30_000);
+            if (!acquired) {
+                try {
+                    Thread.sleep(25);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new BusinessException("登录正在处理中，请重试");
+                }
+            }
+        }
+        if (!acquired) throw new BusinessException("登录正在处理中，请重试");
+
+        try {
+            List<TokenUserInfoDto> replaced = new ArrayList<>();
+            for (TokenUserInfoDto existing : getUserSessions(newSession.getUserId())) {
+                if (!sameDeviceType(existing, deviceType)) continue;
+                TokenUserInfoDto removed = removeUserSession(newSession.getUserId(), existing.getSessionId());
+                if (removed != null) replaced.add(removed);
+            }
+            saveTokenUserInfoDto(newSession);
+            return replaced;
+        } finally {
+            redisUtils.releaseLock(lockKey, lockToken);
+        }
+    }
+
+    private boolean sameDeviceType(TokenUserInfoDto session, SessionDeviceType requestedType) {
+        SessionDeviceType existingType = SessionDeviceType.fromValue(session.getDeviceType());
+        if (existingType != null) return existingType == requestedType;
+
+        String label = session.getDeviceName() == null ? "" : session.getDeviceName().toLowerCase(Locale.ROOT);
+        if (label.contains("wetalkapp") || label.contains("客户端")) {
+            return requestedType == SessionDeviceType.DESKTOP;
+        }
+        if (label.contains("chrome") || label.contains("chromium") || label.contains("edge")
+                || label.contains("firefox") || label.contains("safari")) {
+            return requestedType == SessionDeviceType.BROWSER;
+        }
+        // Unknown legacy sessions cannot be safely classified, so replace them on the next login.
+        return true;
     }
 
     /**

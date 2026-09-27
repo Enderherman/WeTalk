@@ -8,6 +8,7 @@ import java.io.Serializable;
 public class UserSessionVO implements Serializable {
     private String sessionId;
     private String deviceName;
+    private String deviceType;
     private Long createdAt;
     private Long lastActiveAt;
     private boolean current;

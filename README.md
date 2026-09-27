@@ -1,6 +1,6 @@
 # WeTalk 后端（0.0.2）
 
-WeTalk 是 App 和 Web 共用的 Java 17 / Spring Boot 聊天服务。后端提供账号、联系人、群聊、消息历史、文件和管理员接口；MySQL 保存业务数据，Redis 保存会话/缓存并由 Redisson 广播消息，Netty 推送 WebSocket。AI 可选，默认关闭。 AI 默认关闭（`WETALK_AI_ENABLED=false`）；仅启用文字聊天时才配置 `OPENAI_API_KEY`。语音、图片和 moderation 模型默认显式禁用，所以 NAS 部署在关闭 AI 的情况下不需要 AI 密钥。
+WeTalk 是 App 和 Web 共用的 Java 17 / Spring Boot 聊天服务。后端提供账号、联系人、群聊、消息历史、文件和管理员接口；MySQL 保存业务数据，Redis 保存会话/缓存并由 Redisson 广播消息，Netty 推送 WebSocket。AI 默认关闭（`WETALK_AI_ENABLED=false`）；启用文字聊天时再配置 `OPENAI_API_KEY`。语音、转写、图片和 moderation 模型默认禁用，关闭 AI 时后端无需 AI 密钥即可启动。
 
 ## 当前地址与协议
 
@@ -22,7 +22,7 @@ WeTalk 是 App 和 Web 共用的 Java 17 / Spring Boot 聊天服务。后端提�
 
 ## 多端登录会话
 
-同一账号现在可以同时登录多个浏览器或客户端。Redis 为每个登录建立独立 sessionId，保存粗略设备标签、创建时间和最近活动时间；历史单 token Redis 映射会在访问时迁移，不需要 MySQL 数据库迁移。设备列表不返回 token、Cookie、原始 User-Agent 或 IP。
+同一账号最多同时保留一台电脑客户端和一个浏览器会话；同类设备新登录会撤销该类别的旧 token 并关闭对应 WebSocket。Redis 为每个登录建立独立 sessionId 和 `deviceType`，保存粗略设备标签、创建时间及最近活动时间；历史单 token 映射在访问时迁移，不需要 MySQL 数据库迁移。设备列表不返回 token、Cookie、原始 User-Agent 或 IP。
 
 - `POST /api/account/listSessions`：列出当前账号会话，并标记当前会话。
 - `POST /api/account/revokeSession`：按 sessionId 撤销当前账号的一台设备；会让对应 token 失效并关闭其 WebSocket。
@@ -30,19 +30,7 @@ WeTalk 是 App 和 Web 共用的 Java 17 / Spring Boot 聊天服务。后端提�
 - `/api/account/logout` 仅退出当前会话；修改密码和管理员强制下线仍会撤销该账号的全部会话。WebSocket ticket 消费时会再次确认其 session 仍有效。
 - 一个账号的消息会推送到所有在线设备；退出一个连接不会清除其他设备的在线状态。
 
-验证：Maven clean verify 92 项通过；真实本机后端/MySQL/Redis 使用三个独立浏览器会话验证会话列表、设备标签、当前标记、退出其他设备、撤销单个设备、旧 Cookie 返回 901 及对应 WebSocket 断开。网页 Chromium 桌面/移动视口也通过 Vite 代理完成界面操作，临时账号、数据库关联数据和 Redis 会话/限流键已清理。
-
-## 多端登录会话
-
-同一账号现在可以同时登录多个浏览器或客户端。Redis 为每个登录建立独立 sessionId，保存粗略设备标签、创建时间和最近活动时间；历史单 token Redis 映射会在访问时迁移，不需要 MySQL 数据库迁移。设备列表不返回 token、Cookie、原始 User-Agent 或 IP。
-
-- POST /api/account/listSessions：列出当前账号会话，并标记当前会话。
-- POST /api/account/revokeSession：按 sessionId 撤销当前账号的一台设备；对应 token 失效、WebSocket 断开。
-- POST /api/account/revokeOtherSessions：保留当前会话，撤销其他设备。
-- logout 只退出当前会话；改密和管理员强制下线仍撤销该账号的全部会话。WebSocket ticket 消费时会再次确认所属 session 仍有效。
-- 消息会推送到同一账号的所有在线设备；单个连接断开不会清除其他设备的在线状态。
-
-验证：Maven clean verify 92 项通过；真实本机后端/MySQL/Redis 使用三个独立浏览器会话验证会话列表、设备标签、当前标记、退出其他设备、撤销单个设备、旧 Cookie 返回 901 及对应 WebSocket 断开。网页 Chromium 桌面/移动视口也通过 Vite 代理完成界面操作；临时账号、数据库关联数据及 Redis 会话/限流键已清理。
+验证：Maven clean verify 94 项、WeTalkWeb 243 项单测、类型检查和生产构建通过；真实本机后端/MySQL/Redis 验证同类桌面/浏览器重登会撤销旧 token/Cookie 和 WebSocket、保留另一类别会话，并发同类桌面登录也只留一个有效 token，并始终最多一台客户端加一个浏览器。测试账号、会话和 Redis 限流键已清理。
 
 ## 本次修复
 
@@ -200,7 +188,7 @@ Dockerfile 使用官方 [Eclipse Temurin](https://hub.docker.com/_/eclipse-temur
 - 本后端没有添加任意 Origin 的全局 CORS 放行；用同源代理即可保留权限边界。
 - Netty WebSocket 会校验浏览器 Origin，允许来源由 WETALK_WEB_ALLOWED_ORIGINS 配置；无 Origin 的原生客户端继续兼容，Origin 为 null 时仅放行旧 token 查询参数，不放行 WebSocket ticket。生产域名确定后应把允许列表设置为该精确 HTTPS Origin。
 - 消息通过 POST /api/chat/sendMessage 发送，通过 WebSocket 接收。历史分页接口为 POST /api/chat/loadHistory，参数 contactId、beforeMessageId、pageSize（1..50）。
-- 同一账号可同时登录 App、Web 或多个浏览器设备。用户设置页可查看设备会话、撤销指定会话或退出其他设备；改密码和管理员强制下线会撤销所有会话。
+- 同一账号最多同时登录一台 WeTalk 电脑客户端和一个浏览器；同类设备再次登录会替换旧会话。个人资料与安全页可查看会话并撤销其他会话；改密和管理员强制下线会撤销全部会话。
 
 ## 部署后必须验证
 

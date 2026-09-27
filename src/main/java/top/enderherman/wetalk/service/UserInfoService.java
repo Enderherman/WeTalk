@@ -5,6 +5,7 @@ import top.enderherman.wetalk.entity.po.UserInfo;
 import top.enderherman.wetalk.entity.query.UserInfoQuery;
 import top.enderherman.wetalk.entity.vo.PaginationResultVO;
 import top.enderherman.wetalk.entity.vo.UserInfoVO;
+import top.enderherman.wetalk.entity.enums.SessionDeviceType;
 
 import java.io.IOException;
 import java.util.List;
@@ -99,6 +100,8 @@ public interface UserInfoService {
      * 登录
      */
     UserInfoVO login(String email, String password);
+
+    UserInfoVO login(String email, String password, SessionDeviceType deviceType, String deviceName);
 
     /**
      * 更新用户信息

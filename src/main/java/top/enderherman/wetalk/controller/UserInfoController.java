@@ -14,6 +14,7 @@ import top.enderherman.wetalk.component.RedisComponent;
 import top.enderherman.wetalk.config.AppConfig;
 import top.enderherman.wetalk.constants.Constants;
 import top.enderherman.wetalk.entity.dto.TokenUserInfoDto;
+import top.enderherman.wetalk.entity.enums.SessionDeviceType;
 import top.enderherman.wetalk.entity.po.UserInfo;
 import top.enderherman.wetalk.entity.vo.UserInfoVO;
 import top.enderherman.wetalk.entity.vo.UserSessionVO;
@@ -119,8 +120,8 @@ public class UserInfoController extends ABaseController {
             if (!checkCode.equalsIgnoreCase((String) redisUtils.get(Constants.REDIS_KEY_CHECK_CODE + checkCodeKey))) {
                 throw new BusinessException("图片验证码错误");
             }
-            UserInfoVO userInfoVO = userInfoService.login(email, password);
-            setSessionDeviceName(userInfoVO, request);
+            UserInfoVO userInfoVO = userInfoService.login(email, password, SessionDeviceType.DESKTOP,
+                    SessionDeviceLabel.fromUserAgent(request.getHeader(HttpHeaders.USER_AGENT)));
             return getSuccessResponseVO(userInfoVO);
         } finally {
             redisUtils.delete(Constants.REDIS_KEY_CHECK_CODE + checkCodeKey);
@@ -140,8 +141,8 @@ public class UserInfoController extends ABaseController {
         try {
             rateLimitService.enforce("account-login", email, 10, 600);
             validateCaptcha(checkCodeKey, checkCode);
-            UserInfoVO userInfo = userInfoService.login(email, password);
-            setSessionDeviceName(userInfo, request);
+            UserInfoVO userInfo = userInfoService.login(email, password, SessionDeviceType.BROWSER,
+                    SessionDeviceLabel.fromUserAgent(request.getHeader(HttpHeaders.USER_AGENT)));
             response.addHeader(HttpHeaders.SET_COOKIE,
                     WebAuthCookie.session(userInfo.getToken(), appConfig.isWebAuthCookieSecure()).toString());
             return getSuccessResponseVO(CopyUtils.copy(userInfo, WebSessionVO.class));
@@ -191,6 +192,7 @@ public class UserInfoController extends ABaseController {
             UserSessionVO view = new UserSessionVO();
             view.setSessionId(session.getSessionId());
             view.setDeviceName(session.getDeviceName());
+            view.setDeviceType(session.getDeviceType());
             view.setCreatedAt(session.getCreatedAt());
             view.setLastActiveAt(session.getLastActiveAt());
             view.setCurrent(session.getSessionId().equals(current.getSessionId()));
@@ -279,13 +281,6 @@ public class UserInfoController extends ABaseController {
         channelContextUtils.closeSession(tokenUserInfoDto.getUserId(), tokenUserInfoDto.getSessionId());
         response.addHeader(HttpHeaders.SET_COOKIE, WebAuthCookie.clear(appConfig.isWebAuthCookieSecure()).toString());
         return getSuccessResponseVO(null);
-    }
-
-    private void setSessionDeviceName(UserInfoVO userInfo, HttpServletRequest request) {
-        TokenUserInfoDto session = redisComponent.getTokenUserInfoDto(userInfo.getToken());
-        if (session == null) return;
-        session.setDeviceName(SessionDeviceLabel.fromUserAgent(request.getHeader(HttpHeaders.USER_AGENT)));
-        redisComponent.saveTokenUserInfoDto(session);
     }
 
     private void validateCaptcha(String checkCodeKey, String checkCode) {

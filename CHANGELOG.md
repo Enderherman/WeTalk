@@ -1,3 +1,9 @@
+## 登录设备数量限制（2026-09-27）
+
+- 同一账号最多保留一台电脑客户端会话和一个浏览器会话。`/account/login` 归入电脑客户端，`/account/webLogin` 归入浏览器；同类新登录在 Redis 用户级锁内撤销旧 token/ticket 并关闭旧 WebSocket，另一类别继续有效。
+- 会话响应新增 `deviceType`；兼容已有设备标签，无法分类的旧会话会在下一次登录时清理。
+- 验证：Maven clean verify 94 项、WeTalkWeb 243 项单测、类型检查和生产构建通过。真实后端/MySQL/Redis 完成桌面/浏览器交替重登和并发桌面登录，验证旧 token/Cookie 返回 901、旧 WebSocket 断开、异类会话保留及数量上限；临时账号和 Redis 会话/限流键已清理。
+
 ## AI 关闭时无需密钥（2026-09-27）
 
 - 显式关闭语音、转写、图片和 moderation 模型自动配置；关闭 AI 时不再因缺少 `OPENAI_API_KEY` 阻止 Spring Boot 启动。
@@ -8,13 +14,6 @@
 - Redis 改为按 sessionId 管理多个登录会话；旧版每用户单 token 索引会在登录态访问时迁移，不需要数据库迁移。
 - 新增 POST /api/account/listSessions、/api/account/revokeSession 和 /api/account/revokeOtherSessions。响应只含设备标签、创建/活动时间和当前会话标志，不含 token、Cookie、原始 User-Agent 或 IP。
 - 登录登出按会话处理；撤销只清理对应 token/ticket 并关闭对应 WebSocket，改密与管理员强制下线仍撤销全部会话。消息推送和群成员在线连接支持同一用户的多条 WebSocket。
-- 验证：Maven clean verify 92 项通过；本机真实后端/MySQL/Redis 和 Chromium 桌面/移动浏览器验证三个并行会话、当前标志、单设备撤销、退出其他设备、旧 Cookie 返回 901、目标 WebSocket 断开和前端界面操作；临时数据库/Redis 数据已清理。
-
-## 多端会话管理（2026-09-27）
-
-- Redis 改为按 sessionId 管理多个登录会话；旧版每用户单 token 索引会在登录态访问时迁移，不需要数据库迁移。
-- 新增 `POST /api/account/listSessions`、`/api/account/revokeSession` 和 `/api/account/revokeOtherSessions`。响应只含设备标签、创建/活动时间和当前会话标志，不含 token、Cookie、原始 User-Agent 或 IP。
-- 登录登出按会话处理；撤销会话只清理对应 token/ticket 并关闭对应 WebSocket，改密与管理员强制下线仍撤销全部会话。消息推送和群成员在线连接支持同一用户的多条 WebSocket。
 - 验证：Maven clean verify 92 项通过；本机真实后端/MySQL/Redis 和 Chromium 桌面/移动浏览器验证三个并行会话、当前标志、单设备撤销、退出其他设备、旧 Cookie 返回 901、目标 WebSocket 断开和前端界面操作；临时数据库/Redis 数据已清理。
 
 ## 持久化会话未读游标（2026-09-27）

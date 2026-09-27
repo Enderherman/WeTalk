@@ -21,6 +21,9 @@ public class RedisUtils<V> {
     private static final DefaultRedisScript<Object> GET_AND_DELETE_SCRIPT = new DefaultRedisScript<>(
             "local value = redis.call('GET', KEYS[1]); if value then redis.call('DEL', KEYS[1]); end; return value",
             Object.class);
+    private static final DefaultRedisScript<Long> RELEASE_LOCK_SCRIPT = new DefaultRedisScript<>(
+            "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]); else return 0; end",
+            Long.class);
 
     @Resource
     private RedisTemplate<String, V> redisTemplate;
@@ -49,6 +52,27 @@ public class RedisUtils<V> {
             V value = (V) redisTemplate.execute(GET_AND_DELETE_SCRIPT, Collections.singletonList(key));
             return value;
         } catch (SerializationException e) {
+            log.error("Redis operation failed", e);
+            throw new BusinessException(ResponseCodeEnum.CODE_506);
+        }
+    }
+
+    public boolean tryAcquireLock(String key, String lockToken, long leaseMillis) {
+        try {
+            @SuppressWarnings("unchecked")
+            V value = (V) lockToken;
+            return Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(
+                    key, value, leaseMillis, TimeUnit.MILLISECONDS));
+        } catch (Exception e) {
+            log.error("Redis operation failed", e);
+            throw new BusinessException(ResponseCodeEnum.CODE_506);
+        }
+    }
+
+    public void releaseLock(String key, String lockToken) {
+        try {
+            redisTemplate.execute(RELEASE_LOCK_SCRIPT, Collections.singletonList(key), lockToken);
+        } catch (Exception e) {
             log.error("Redis operation failed", e);
             throw new BusinessException(ResponseCodeEnum.CODE_506);
         }

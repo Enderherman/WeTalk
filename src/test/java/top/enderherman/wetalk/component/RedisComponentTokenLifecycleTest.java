@@ -62,6 +62,51 @@ class RedisComponentTokenLifecycleTest {
     }
 
     @Test
+    void aNewLoginReplacesOnlyTheExistingSessionOfTheSameDeviceType() {
+        MemoryRedisUtils redis = new MemoryRedisUtils();
+        RedisComponent component = new RedisComponent();
+        ReflectionTestUtils.setField(component, "redisUtils", redis);
+        TokenUserInfoDto oldDesktop = TokenUserInfoDto.builder().userId("test-user").token("old-desktop")
+                .deviceType("desktop").deviceName("WeTalkApp · Windows").build();
+        TokenUserInfoDto browser = TokenUserInfoDto.builder().userId("test-user").token("browser")
+                .deviceType("browser").deviceName("Chrome · Windows").build();
+        TokenUserInfoDto newDesktop = TokenUserInfoDto.builder().userId("test-user").token("new-desktop")
+                .deviceType("desktop").deviceName("WeTalkApp · macOS").build();
+        component.saveTokenUserInfoDto(oldDesktop);
+        component.saveTokenUserInfoDto(browser);
+
+        List<TokenUserInfoDto> replaced = component.replaceSameTypeLoginSession(newDesktop);
+
+        assertEquals(List.of(oldDesktop), replaced);
+        assertNull(component.getTokenUserInfoDto("old-desktop"));
+        assertNotNull(component.getTokenUserInfoDto("browser"));
+        assertNotNull(component.getTokenUserInfoDto("new-desktop"));
+        assertEquals(2, component.getUserSessions("test-user").size());
+    }
+
+    @Test
+    void legacyDeviceLabelsAreUsedToClassifySessionsBeforeReplacement() {
+        MemoryRedisUtils redis = new MemoryRedisUtils();
+        RedisComponent component = new RedisComponent();
+        ReflectionTestUtils.setField(component, "redisUtils", redis);
+        TokenUserInfoDto oldDesktop = TokenUserInfoDto.builder().userId("test-user").token("old-desktop")
+                .deviceName("WeTalkApp · Windows").build();
+        TokenUserInfoDto oldBrowser = TokenUserInfoDto.builder().userId("test-user").token("old-browser")
+                .deviceName("Chrome · Windows").build();
+        component.saveTokenUserInfoDto(oldDesktop);
+        component.saveTokenUserInfoDto(oldBrowser);
+        TokenUserInfoDto newBrowser = TokenUserInfoDto.builder().userId("test-user").token("new-browser")
+                .deviceType("browser").deviceName("Safari · iOS").build();
+
+        List<TokenUserInfoDto> replaced = component.replaceSameTypeLoginSession(newBrowser);
+
+        assertEquals(List.of(oldBrowser), replaced);
+        assertNotNull(component.getTokenUserInfoDto("old-desktop"));
+        assertNull(component.getTokenUserInfoDto("old-browser"));
+        assertNotNull(component.getTokenUserInfoDto("new-browser"));
+    }
+
+    @Test
     void anAlreadyIssuedTicketCannotAuthenticateARevokedSession() {
         MemoryRedisUtils redis = new MemoryRedisUtils();
         RedisComponent component = new RedisComponent();
@@ -110,6 +155,16 @@ class RedisComponentTokenLifecycleTest {
         @Override
         public Object getAndDelete(String key) {
             return values.remove(key);
+        }
+
+        @Override
+        public boolean tryAcquireLock(String key, String lockToken, long leaseMillis) {
+            return values.putIfAbsent(key, lockToken) == null;
+        }
+
+        @Override
+        public void releaseLock(String key, String lockToken) {
+            values.remove(key, lockToken);
         }
 
         @Override
