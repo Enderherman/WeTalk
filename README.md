@@ -97,8 +97,7 @@ Spring Boot 不会自动读取本地 .env；本地直接运行 Java 时要由终
 | REDIS_SSL | false；启用时 Spring 和 Redisson 都使用 TLS |
 | PROJECT_FOLDER | 本地 ./data/；Docker /data/wetalk/ |
 | WETALK_WEB_AUTH_COOKIE_SECURE | false 本地开发；HTTPS 部署必须设为 true，启用 HttpOnly/SameSite Strict 的 Web 会话 Cookie |
-| WETALK_WEB_ALLOWED_ORIGINS | 本地默认允许 localhost:5173 和 127.0.0.1:5173；生产设为网页 HTTPS Origin，多个来源用逗号分隔 |
-| WETALK_WEB_ALLOWED_ORIGINS | 本地默认允许 localhost:5173 和 127.0.0.1:5173；生产设为网页 HTTPS Origin，多个来源用逗号分隔 |
+| WETALK_WEB_ALLOWED_ORIGINS | 本地默认允许 localhost:5173 和 127.0.0.1:5173；NAS 内网同源 HTTP 设为 `http://<NAS_LAN_IP>:<WEB_PUBLISHED_PORT>`；HTTPS 部署设为网页实际 Origin |
 | HTTP_PORT / WS_PORT | 5050 / 5051；Compose 固定内部端口 |
 | ADMIN_EMAILS | 默认为空；可信的现有管理员邮箱，以逗号分隔 |
 | MAX_UPLOAD_SIZE | 500MB，HTTP 与文件请求上限 |
@@ -140,7 +139,7 @@ sudo docker compose -f compose.infra.yaml ps
 
 生成配置拒绝覆盖已有 .env/secrets/config，避免意外轮换凭据。Redis 配置文件必须由容器 UID/GID 999 读取；父目录和 .env 保持私有权限。同一网络中的后端用 wetalk-mysql:3306、wetalk-redis:6379；从本机开发工具连接 NAS 用 192.168.31.108:13306 / 16379。
 
-本次只要求创建两个基础容器。后端镜像可以先构建，之后确认时再用 compose.yaml + compose.nas.yaml 接入：
+NAS 部署分为基础服务、后端和网页三个容器层：`compose.infra.yaml` 仅用于全新隔离环境的 MySQL/Redis，`compose.yaml` + `compose.nas.yaml` 启动后端，`WeTalkWeb/compose.nas.yaml` 启动静态网页。部署前必须核对 NAS 当前容器、网络、端口、目录和数据库数据；不要在未完成审计与备份前重建或覆盖现有服务。
 
 ~~~shell
 sudo docker build -t wetalk-backend:0.0.2 .
@@ -152,7 +151,7 @@ prepare_infra.py 为后续后端预留 NAS 发布端口 15050/15051，避免碰�
 
 ### 单独后端容器
 
-这里是下一步部署操作说明，本次打包不等于已部署到 NAS。
+以下是后端容器操作说明，本地打包不等于已部署到 NAS。网页静态容器的 Dockerfile、Nginx 同源代理和 Compose 配置见 `WeTalkWeb/`。
 
 1. 核对 NAS 架构、端口占用、已有 MySQL/Redis 地址、schema 和数据备份。建议独立目录 /volume2/docker/wetalk；这是建议路径，实际需现场核对。
 2. 将发布 ZIP 传到 NAS，解压后核验文件校验和；包内保留 target/wetalk.jar 的相对结构。
