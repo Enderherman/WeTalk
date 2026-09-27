@@ -152,7 +152,7 @@ prepare_infra.py 为后续后端预留 NAS 发布端口 15050/15051，避免碰�
 
 ### 单独后端容器
 
-以下是后端容器操作说明，本地打包不等于已部署到 NAS。网页静态容器的 Dockerfile、Nginx 同源代理和 Compose 配置见 `WeTalkWeb/`。
+以下是后端容器操作说明，本地打包不等于已部署到 NAS。网页静态容器的 Dockerfile、Nginx 同源代理、Compose 配置、备份和回滚步骤见 `WeTalkWeb/docs/nas-docker-deployment.md`。
 
 1. 核对 NAS 架构、端口占用、已有 MySQL/Redis 地址、schema 和数据备份。建议独立目录 /volume2/docker/wetalk；这是建议路径，实际需现场核对。
 2. 将发布 ZIP 传到 NAS，解压后核验文件校验和；包内保留 target/wetalk.jar 的相对结构。
