@@ -20,6 +20,12 @@ spring:
     model:
       chat: ${WETALK_AI_MODEL:none}
       embedding: none
+      image: none
+      moderation: none
+      # The client supports text chat only; do not require speech API keys to start.
+      audio:
+        speech: none
+        transcription: none
     chat:
       client:
         enabled: ${WETALK_AI_ENABLED:false}

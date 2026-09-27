@@ -1,6 +1,6 @@
 # WeTalk 后端（0.0.2）
 
-WeTalk 是 App 和 Web 共用的 Java 17 / Spring Boot 聊天服务。后端提供账号、联系人、群聊、消息历史、文件和管理员接口；MySQL 保存业务数据，Redis 保存会话/缓存并由 Redisson 广播消息，Netty 推送 WebSocket。AI 可选，默认关闭。
+WeTalk 是 App 和 Web 共用的 Java 17 / Spring Boot 聊天服务。后端提供账号、联系人、群聊、消息历史、文件和管理员接口；MySQL 保存业务数据，Redis 保存会话/缓存并由 Redisson 广播消息，Netty 推送 WebSocket。AI 可选，默认关闭。 AI 默认关闭（`WETALK_AI_ENABLED=false`）；仅启用文字聊天时才配置 `OPENAI_API_KEY`。语音、图片和 moderation 模型默认显式禁用，所以 NAS 部署在关闭 AI 的情况下不需要 AI 密钥。
 
 ## 当前地址与协议
 

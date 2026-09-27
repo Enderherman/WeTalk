@@ -1,3 +1,8 @@
+## AI 关闭时无需密钥（2026-09-27）
+
+- 显式关闭语音、转写、图片和 moderation 模型自动配置；关闭 AI 时不再因缺少 `OPENAI_API_KEY` 阻止 Spring Boot 启动。
+- 验证：使用本机真实 MySQL/Redis，在 `WETALK_AI_ENABLED=false` 且未设置 `OPENAI_API_KEY` 时启动后 readiness 返回 UP；后端 Maven clean verify 92 项通过。
+
 ## 多端会话管理（2026-09-27）
 
 - Redis 改为按 sessionId 管理多个登录会话；旧版每用户单 token 索引会在登录态访问时迁移，不需要数据库迁移。
