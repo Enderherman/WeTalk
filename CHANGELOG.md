@@ -1,3 +1,9 @@
+## 音视频 Range 流式读取（2026-09-27）
+
+- 新增受登录态和会话成员权限保护的 `GET /api/chat/streamMedia`，只提供已上传的 type 1 音视频；支持完整 200、单区间 206 和不可满足的 416。
+- 同源网页 video/audio 控件改为 Range 流式播放；跨源 API 基址回退到现有 Blob 预览。Range 文件名按安全后缀映射 MIME 并设置 nosniff。
+- Maven clean verify 72 项通过；真实后端临时双账号上传 MP4 后验证 206 内容范围/部分字节、200 完整字节和 416 边界，关联记录/文件已清理。
+
 ## API 请求频率限制（2026-09-27）
 
 - 为注册、登录/Web 登录、WebSocket ticket 和聊天消息发送增加 Redis Lua 原子固定窗口限流；计数键使用身份摘要，避免把邮箱或用户编号写入 Redis 键。
