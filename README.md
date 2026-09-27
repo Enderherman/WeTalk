@@ -99,6 +99,7 @@ Spring Boot 不会自动读取本地 .env；本地直接运行 Java 时要由终
 | WETALK_WEB_AUTH_COOKIE_SECURE | false 本地开发；HTTPS 部署必须设为 true，启用 HttpOnly/SameSite Strict 的 Web 会话 Cookie |
 | WETALK_WEB_ALLOWED_ORIGINS | 本地默认允许 localhost:5173 和 127.0.0.1:5173；NAS 内网同源 HTTP 设为 `http://<NAS_LAN_IP>:<WEB_PUBLISHED_PORT>`；HTTPS 部署设为网页实际 Origin |
 | HTTP_PORT / WS_PORT | 5050 / 5051；Compose 固定内部端口 |
+| BACKEND_BIND_IP | 后端宿主机端口的绑定地址，默认 127.0.0.1；同源 NAS Web 容器通过 `wetalk-net` 内网访问，不需把 API/WS 直接开放到局域网 |
 | ADMIN_EMAILS | 默认为空；可信的现有管理员邮箱，以逗号分隔 |
 | MAX_UPLOAD_SIZE | 500MB，HTTP 与文件请求上限 |
 | SPRING_PROFILES_ACTIVE | dev；Compose 设为 docker |
@@ -124,11 +125,11 @@ AI 默认关闭。启用时设置 `WETALK_AI_ENABLED=true`、`WETALK_AI_MODEL=op
 
 compose.infra.yaml 用官方 MySQL 8.4、Redis 7.4 创建两个独立容器，分别名为 wetalk-mysql 和 wetalk-redis。它们共用 wetalk-net 网络，数据保存在该专用目录的 data/mysql 和 data/redis。
 
-准备脚本会随机生成独立的 MySQL root 密码、应用数据库密码和 Redis 密码；密码保存在 .env、secrets/ 和 config/redis.conf，不会打印或提交到 Git。MySQL root 限制为本机登录，应用账号 wetalk 仅用于 wetalk 数据库。默认发布地址是 127.0.0.1，需要局域网开发时显式指定 NAS 的 LAN IP。
+准备脚本会随机生成独立的 MySQL root 密码、应用数据库密码和 Redis 密码；密码保存在 .env、secrets/ 和 config/redis.conf，不会打印或提交到 Git。MySQL root 限制为本机登录，应用账号 wetalk 仅用于 wetalk 数据库。默认发布地址是 127.0.0.1。NAS 上后端和网页通过 `wetalk-net` 通信，无需把 MySQL/Redis 暴露到局域网；只有远程开发工具确实要直连时，才用 `--bind-ip` 指定 NAS LAN IP。
 
 ~~~shell
 cd /volume2/docker/wetalk
-python3 scripts/prepare_infra.py --bind-ip 192.168.31.108
+python3 scripts/prepare_infra.py  # 保持 MySQL/Redis 仅绑定 NAS 本机回环地址
 sudo chown 999:999 config/redis.conf
 sudo docker compose -f compose.infra.yaml config --quiet
 sudo docker compose -f compose.infra.yaml up -d
@@ -137,7 +138,7 @@ sudo docker compose -f compose.infra.yaml ps
 
 默认 NAS 侧端口为 MySQL 13306、Redis 16379，以避开现有服务；实际启动前仍需核对端口。两者启用认证和持久化，MySQL 首次启动自动导入 sql/001-schema.sql。不要通过清空 data/mysql 重跑初始化；已有数据目录的升级需专门迁移脚本。
 
-生成配置拒绝覆盖已有 .env/secrets/config，避免意外轮换凭据。Redis 配置文件必须由容器 UID/GID 999 读取；父目录和 .env 保持私有权限。同一网络中的后端用 wetalk-mysql:3306、wetalk-redis:6379；从本机开发工具连接 NAS 用 192.168.31.108:13306 / 16379。
+生成配置拒绝覆盖已有 .env/secrets/config，避免意外轮换凭据。Redis 配置文件必须由容器 UID/GID 999 读取；父目录和 .env 保持私有权限。同一 Docker 网络中的后端使用 `wetalk-mysql:3306` 和 `wetalk-redis:6379`。默认宿主机映射只监听 127.0.0.1；需要远程开发直连时再单独评估 LAN 发布和防火墙。
 
 NAS 部署分为基础服务、后端和网页三个容器层：`compose.infra.yaml` 仅用于全新隔离环境的 MySQL/Redis，`compose.yaml` + `compose.nas.yaml` 启动后端，`WeTalkWeb/compose.nas.yaml` 启动静态网页。部署前必须核对 NAS 当前容器、网络、端口、目录和数据库数据；不要在未完成审计与备份前重建或覆盖现有服务。
 
@@ -175,7 +176,7 @@ docker compose logs --tail=100 wetalk
 curl -f http://127.0.0.1:5050/api/actuator/health/readiness
 ~~~
 
-Compose 映射 5050 和 5051，可用 HTTP_PUBLISHED_PORT / WS_PUBLISHED_PORT 修改 NAS 侧端口。WETALK_DATA_DIR 控制持久化目录，建议采用经确认的绝对路径。容器非 root 运行，根文件系统只读，临时上传写 /tmp，正式文件写挂载目录。
+Compose 映射后端 REST/WS 宿主机端口，默认由 `BACKEND_BIND_IP=127.0.0.1` 限定在 NAS 本机；共享 `wetalk-net` 的网页容器仍可通过服务名访问后端，无需向局域网开放 5050/5051。仅需临时直连诊断时才调整后端绑定地址。`HTTP_PUBLISHED_PORT` / `WS_PUBLISHED_PORT` 控制宿主机端口；`WETALK_DATA_DIR` 控制持久化目录，建议采用经确认的绝对路径。容器非 root 运行，根文件系统只读，临时上传写 `/tmp`，正式文件写挂载目录。
 
 Dockerfile 使用官方 [Eclipse Temurin](https://hub.docker.com/_/eclipse-temurin) Java 17 JRE 镜像，安装验证码所需字体和健康检查工具。构建需要网络获取基础镜像/系统包；如果 NAS 拉取受阻，可在有 Linux Docker 引擎的机器构建同架构镜像、docker save、校验传输后 docker load。当前发布 ZIP 是构建包，**不是 docker load 可导入的镜像 tar**。
 

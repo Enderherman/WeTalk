@@ -1,3 +1,9 @@
+## NAS 容器端口默认本机绑定（2026-09-28）
+
+- 后端 Compose 的 HTTP/WS 宿主机端口默认绑定 `127.0.0.1`；同源网页容器通过共享 `wetalk-net` 访问 `wetalk:5050/5051`，无需把 API、WebSocket、MySQL 或 Redis 暴露到局域网。需 LAN 直连诊断时再单独配置绑定地址。
+- 删除后端 `.env.example` 中重复的 `WETALK_WEB_ALLOWED_ORIGINS` 行，并说明 NAS 同源 Origin 配置。
+- 验证：后端和网页 Compose `config --quiet` 均通过；Maven clean verify 96 项。此提交准备部署配置，不代表 NAS 容器已经启动。
+
 ## 私聊发送者已读回执（2026-09-27）
 
 - `/chat/markRead` 仅在私聊游标前进时给对端发送 WebSocket type 17；重复或较旧的游标不重复通知。群聊仍只维护个人未读数，不发送群成员已读状态。

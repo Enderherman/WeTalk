@@ -12,8 +12,8 @@ services:
       WS_PORT: "5051"
       PROJECT_FOLDER: /data/wetalk/
     ports:
-      - "${HTTP_PUBLISHED_PORT:-5050}:5050"
-      - "${WS_PUBLISHED_PORT:-5051}:5051"
+      - "${BACKEND_BIND_IP:-127.0.0.1}:${HTTP_PUBLISHED_PORT:-5050}:5050"
+      - "${BACKEND_BIND_IP:-127.0.0.1}:${WS_PUBLISHED_PORT:-5051}:5051"
     volumes:
       - "${WETALK_DATA_DIR:-./data}:/data/wetalk"
     read_only: true
