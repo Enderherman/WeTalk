@@ -188,7 +188,21 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                 || message == null || !sessionId.equals(message.getSessionId())) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
-        chatSessionUserMapper.updateLastReadMessageId(userInfo.getUserId(), sessionId, messageId);
+        if (messageId <= (sessionUser.getLastReadMessageId() == null ? 0 : sessionUser.getLastReadMessageId())) {
+            return;
+        }
+        Integer updated = chatSessionUserMapper.updateLastReadMessageId(userInfo.getUserId(), sessionId, messageId);
+        if (contactType == UserContactTypeEnum.USER && updated != null && updated > 0) {
+            MessageSendDTO<?> readReceipt = new MessageSendDTO<>();
+            readReceipt.setMessageType(MessageTypeEnum.READ_RECEIPT.getType());
+            readReceipt.setMessageId(messageId);
+            readReceipt.setSessionId(sessionId);
+            readReceipt.setContactId(contactId);
+            readReceipt.setSendUserId(userInfo.getUserId());
+            readReceipt.setSendUserNickName(userInfo.getNickName());
+            readReceipt.setSendTime(System.currentTimeMillis());
+            messageHandler.sendMessage(readReceipt);
+        }
     }
 
     /**

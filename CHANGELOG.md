@@ -1,3 +1,9 @@
+## 私聊发送者已读回执（2026-09-27）
+
+- `/chat/markRead` 仅在私聊游标前进时给对端发送 WebSocket type 17；重复或较旧的游标不重复通知。群聊仍只维护个人未读数，不发送群成员已读状态。
+- WebSocket INIT 的一对一会话摘要新增 `peerReadMessageId`，从对端持久游标恢复发送状态；无需新增数据库迁移。
+- 验证：Maven clean verify 96 项、WeTalkWeb 244 项单测、类型检查和生产构建通过。真实后端/MySQL/Redis 双账号验证实时 type 17、重复请求去重和发送方重连后 INIT 恢复游标；临时账号、关系、消息、会话和 Redis 键已清理。
+
 ## 登录设备数量限制（2026-09-27）
 
 - 同一账号最多保留一台电脑客户端会话和一个浏览器会话。`/account/login` 归入电脑客户端，`/account/webLogin` 归入浏览器；同类新登录在 Redis 用户级锁内撤销旧 token/ticket 并关闭旧 WebSocket，另一类别继续有效。

@@ -14,6 +14,7 @@
 		<!--联系人名称-->
                 <result column="contact_name" property="contactName"  />
                 <result column="last_read_message_id" property="lastReadMessageId" />
+                <result column="peerReadMessageId" property="peerReadMessageId" />
                 <result column="noReadCount" property="noReadCount" />
 	</resultMap>
 
@@ -70,6 +71,9 @@
         COALESCE((select count(1) from chat_message m where m.session_id=u.session_id
         and m.message_id>COALESCE(u.last_read_message_id,0)
         and (m.send_user_id is null or m.send_user_id &lt;&gt; u.user_id)),0) as noReadCount,
+        COALESCE((select peer.last_read_message_id from chat_session_user peer
+        where peer.session_id=u.session_id and peer.user_id=u.contact_id
+        and peer.contact_id=u.user_id),0) as peerReadMessageId,
         case when substring(contact_id,1,1)='G'
         then (select count(1) from user_contact uc where uc.contact_id=u.contact_id)
         else 0
@@ -266,6 +270,7 @@
                 update chat_session_user
                 set last_read_message_id=GREATEST(last_read_message_id,#{messageId})
                 where user_id=#{userId} and session_id=#{sessionId}
+                  and last_read_message_id &lt; #{messageId}
         </update>
 
 </mapper>

@@ -30,11 +30,11 @@ WeTalk 是 App 和 Web 共用的 Java 17 / Spring Boot 聊天服务。后端提�
 - `/api/account/logout` 仅退出当前会话；修改密码和管理员强制下线仍会撤销该账号的全部会话。WebSocket ticket 消费时会再次确认其 session 仍有效。
 - 一个账号的消息会推送到所有在线设备；退出一个连接不会清除其他设备的在线状态。
 
-验证：Maven clean verify 94 项、WeTalkWeb 243 项单测、类型检查和生产构建通过；真实本机后端/MySQL/Redis 验证同类桌面/浏览器重登会撤销旧 token/Cookie 和 WebSocket、保留另一类别会话，并发同类桌面登录也只留一个有效 token，并始终最多一台客户端加一个浏览器。测试账号、会话和 Redis 限流键已清理。
+验证：Maven clean verify 96 项、WeTalkWeb 244 项单测、类型检查和生产构建通过；真实本机后端/MySQL/Redis 验证同类桌面/浏览器重登会撤销旧 token/Cookie 和 WebSocket、保留另一类别会话，并发同类桌面登录也只留一个有效 token，并始终最多一台客户端加一个浏览器。真实双账号验证私聊 type 17 已读回执、重复游标不重复通知及发送方重连恢复对端游标。测试账号、会话和 Redis 限流键已清理。
 
 ## 本次修复
 
-详见 [CHANGELOG.md](CHANGELOG.md)。重点修复了私聊附件越权、群解散误断开连接、离线同步时间、过期连接清理、Redis 密码/数据库配置、旧 token 残留和首次部署配置；群成员配额改为读取正确的 `maxGroupMemberCount`。机器人和用户头像/封面上传都会校验格式、文件签名和 10 MiB 上限。同时启用 Jakarta 参数校验，管理员预留邮箱不能经公开注册获得权限，API 返回的用户对象不再含密码摘要。聊天视频可选上传 PNG 首帧封面，后端按系统图片大小配置检查扩展名、MIME 和文件签名，并通过已有的消息成员权限接口读取。文字聊天支持可选 UUID `clientMessageId`，用发送者唯一键安全处理相同内容的重试；会话列表在 INIT 中返回持久未读数，`POST /chat/markRead` 记录已读游标。已有数据库部署新后端前需备份并按顺序手工执行 `sql/002-client-message-idempotency.sql` 和 `sql/003-persistent-unread-cursor.sql`。
+详见 [CHANGELOG.md](CHANGELOG.md)。重点修复了私聊附件越权、群解散误断开连接、离线同步时间、过期连接清理、Redis 密码/数据库配置、旧 token 残留和首次部署配置；群成员配额改为读取正确的 `maxGroupMemberCount`。机器人和用户头像/封面上传都会校验格式、文件签名和 10 MiB 上限。同时启用 Jakarta 参数校验，管理员预留邮箱不能经公开注册获得权限，API 返回的用户对象不再含密码摘要。聊天视频可选上传 PNG 首帧封面，后端按系统图片大小配置检查扩展名、MIME 和文件签名，并通过已有的消息成员权限接口读取。文字聊天支持可选 UUID `clientMessageId`，用发送者唯一键安全处理相同内容的重试；INIT 会话列表返回本人未读数和私聊对端的 `peerReadMessageId`；`POST /chat/markRead` 单调推进游标，并在私聊游标前进时通过 WebSocket type 17 通知发送者。群聊只维护本人未读游标，不发送个人已读回执。已有数据库部署新后端前需备份并按顺序手工执行 `sql/002-client-message-idempotency.sql` 和 `sql/003-persistent-unread-cursor.sql`。
 
 管理员账号须由可信的数据库初始化或现有账号配置完成，ADMIN_EMAILS 只填写已核实身份的邮箱；不能依靠公开注册创建管理员。已有配置曾包含真实连接信息时，需要在实际服务上更换相应凭据，当前文件改为环境变量不会清理 Git 历史。
 

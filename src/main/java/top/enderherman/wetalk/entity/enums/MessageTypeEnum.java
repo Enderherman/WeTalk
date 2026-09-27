@@ -20,7 +20,8 @@ public enum MessageTypeEnum {
     ADD_FRIEND_SELF(13, "", "添加好友打招呼消息发送给自己"),
     AI_CHAT(14, "", "AI聊天消息初始化"),
     AI_CHAT_STREAM(15, "", "AI聊天流式消息"),
-    AI_CHAT_STREAM_END(16, "", "AI聊天流式消息结束");
+    AI_CHAT_STREAM_END(16, "", "AI聊天流式消息结束"),
+    READ_RECEIPT(17, "", "私聊已读回执");
 
     private final Integer type;
     private final String initMessage;

@@ -58,6 +58,9 @@ public class ChatSessionUser implements Serializable {
     @JsonIgnore
     private Integer lastReadMessageId;
 
+    /** 对端已读到的最大消息 ID，由会话列表查询计算 */
+    private Integer peerReadMessageId;
+
     /** 当前会话未读消息数，由会话列表查询计算 */
     private Integer noReadCount;
 
