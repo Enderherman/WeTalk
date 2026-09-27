@@ -13,8 +13,12 @@ public final class ImageUploadValidator {
     private ImageUploadValidator() {}
 
     public static void validate(MultipartFile file) {
+        validate(file, 10 * Constants.FILE_SIZE_MB);
+    }
+
+    public static void validate(MultipartFile file, long maxSizeBytes) {
         if (file == null) return;
-        if (file.isEmpty() || file.getSize() > 10 * Constants.FILE_SIZE_MB) {
+        if (maxSizeBytes < 0 || file.isEmpty() || file.getSize() > maxSizeBytes) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
         String fileName = file.getOriginalFilename();

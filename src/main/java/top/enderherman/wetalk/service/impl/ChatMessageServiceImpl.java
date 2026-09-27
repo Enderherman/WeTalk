@@ -29,6 +29,7 @@ import top.enderherman.wetalk.service.ChatMessageService;
 import top.enderherman.wetalk.service.AiService;
 import top.enderherman.wetalk.utils.CopyUtils;
 import top.enderherman.wetalk.utils.DateUtils;
+import top.enderherman.wetalk.utils.ImageUploadValidator;
 import top.enderherman.wetalk.utils.StringUtils;
 import top.enderherman.wetalk.webSocket.MessageHandler;
 
@@ -491,9 +492,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         if (!fileExtName.isEmpty() && !fileExtName.matches("[.][a-zA-Z0-9]{1,16}")) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
-        if (cover != null && cover.getSize() > Constants.FILE_SIZE_MB * sysSettingDto.getMaxImageSize()) {
-            throw new BusinessException(ResponseCodeEnum.CODE_600);
-        }
+        ImageUploadValidator.validate(cover, Constants.FILE_SIZE_MB * sysSettingDto.getMaxImageSize());
         String fileRealName = messageId + fileExtName;
         String month = DateUtils.format(new Date(chatMessage.getSendTime()), DateTimePatternEnum.YYYY_MM.getPattern());
         File folder = new File(appConfig.getProjectFolder() + Constants.FILE_FOLDER + month);
