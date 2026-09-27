@@ -18,6 +18,8 @@ WeTalk 是 App 和 Web 共用的 Java 17 / Spring Boot 聊天服务。后端提�
 
 生产反向代理应使用 HTTPS/WSS，并保持 /api、/ws 两个路径；HTTPS 部署设 WETALK_WEB_AUTH_COOKIE_SECURE=true，并将 WETALK_WEB_ALLOWED_ORIGINS 设为实际网页 Origin。健康接口仅返回 UP/DOWN，不公开配置或数据库详情；就绪检查同时检查 MySQL、Redis 和 WebSocket 是否成功绑定。
 
+未处理的服务错误返回通用 500 和随机 `X-Request-Id`；日志只记录请求方法、路径、错误类型和业务码，不记录查询参数、请求体或异常堆栈。业务拒绝、参数校验和重复记录使用不含用户提交内容的摘要日志。
+
 ## 本次修复
 
 详见 [CHANGELOG.md](CHANGELOG.md)。重点修复了私聊附件越权、群解散误断开连接、离线同步时间、过期连接清理、Redis 密码/数据库配置、旧 token 残留和首次部署配置；群成员配额改为读取正确的 `maxGroupMemberCount`。机器人和用户头像/封面上传都会校验格式、文件签名和 10 MiB 上限。同时启用 Jakarta 参数校验，管理员预留邮箱不能经公开注册获得权限，API 返回的用户对象不再含密码摘要。

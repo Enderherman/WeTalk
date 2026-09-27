@@ -4,6 +4,12 @@
 - 超限返回业务码 429；Redis 计数器不可用时请求失败关闭。
 - Maven clean verify 67 项测试通过；真实后端验证同账号每分钟前 60 个 ticket 成功、第 61 个返回 429，测试账号、ticket、限流计数和关联记录已清理。
 
+## API 错误脱敏与请求关联号（2026-09-27）
+
+- 通用 500 响应不包含底层异常信息；错误响应增加随机 X-Request-Id，服务端仅记录请求方法、路径、错误类别和业务码，不写入查询参数、请求体或异常堆栈。
+- 参数校验、业务拒绝、重复记录和上传错误使用不含提交内容的结构化日志。
+- 增加异常脱敏回归测试；Maven clean verify 68 项通过。
+
 ## WebSocket Origin 白名单（2026-09-27）
 
 - 浏览器 WebSocket 握手只接受 WETALK_WEB_ALLOWED_ORIGINS 中的 Origin；Origin: null 仅对旧 token 客户端兼容，不接受一次性 ticket。

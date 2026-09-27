@@ -14,8 +14,10 @@ import top.enderherman.wetalk.common.ResponseCodeEnum;
 import top.enderherman.wetalk.exception.BusinessException;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import java.util.UUID;
 
 @RestControllerAdvice
 public class AGlobalExceptionHandlerController extends ABaseController {
@@ -26,8 +28,11 @@ public class AGlobalExceptionHandlerController extends ABaseController {
      * 专门处理文件上传错误
      */
     @ExceptionHandler(MultipartException.class)
-    public BaseResponse<?> handleMultipartException(MultipartException e, HttpServletRequest request) {
-        logger.error("文件上传错误，请求地址{},错误信息:", request.getRequestURL(), e);
+    public BaseResponse<?> handleMultipartException(MultipartException e, HttpServletRequest request,
+                                                    HttpServletResponse servletResponse) {
+        String requestId = attachRequestId(servletResponse);
+        logger.warn("Multipart request rejected requestId={} method={} path={} type={}", requestId,
+                request.getMethod(), request.getRequestURI(), e.getClass().getSimpleName());
         BaseResponse<?> response = new BaseResponse<>();
         response.setCode(ResponseCodeEnum.CODE_600.getCode());
         response.setMessage("文件上传失败，请检查文件大小或格式");
@@ -36,8 +41,9 @@ public class AGlobalExceptionHandlerController extends ABaseController {
     }
 
     @ExceptionHandler(value = Exception.class)
-    Object handleException(Exception e, HttpServletRequest request) {
-        logger.error("请求错误，请求地址{},错误信息:", request.getRequestURL(), e);
+    Object handleException(Exception e, HttpServletRequest request, HttpServletResponse servletResponse) {
+        String requestId = attachRequestId(servletResponse);
+        logFailure(e, request, requestId);
         BaseResponse<?> ajaxResponse = new BaseResponse<>();
         //404
         if (e instanceof NoHandlerFoundException) {
@@ -67,5 +73,32 @@ public class AGlobalExceptionHandlerController extends ABaseController {
             ajaxResponse.setStatus(STATUS_ERROR);
         }
         return ajaxResponse;
+    }
+
+    private String attachRequestId(HttpServletResponse response) {
+        String requestId = UUID.randomUUID().toString();
+        response.setHeader("X-Request-Id", requestId);
+        return requestId;
+    }
+
+    private void logFailure(Exception error, HttpServletRequest request, String requestId) {
+        String method = request.getMethod();
+        String path = request.getRequestURI();
+        if (error instanceof BusinessException business) {
+            logger.warn("Business request rejected requestId={} method={} path={} code={}", requestId,
+                    method, path, business.getCode());
+        } else if (error instanceof BindException || error instanceof MethodArgumentTypeMismatchException
+                || error instanceof ConstraintViolationException || error instanceof HandlerMethodValidationException) {
+            logger.warn("Request validation failed requestId={} method={} path={} type={}", requestId,
+                    method, path, error.getClass().getSimpleName());
+        } else if (error instanceof DuplicateKeyException) {
+            logger.warn("Duplicate request data requestId={} method={} path={}", requestId, method, path);
+        } else if (error instanceof NoHandlerFoundException) {
+            logger.info("Unknown request path requestId={} method={} path={}", requestId, method, path);
+        } else {
+            // Do not log exception messages or stacks that may contain SQL, paths, or submitted values.
+            logger.error("Unhandled request failure requestId={} method={} path={} type={}", requestId,
+                    method, path, error.getClass().getSimpleName());
+        }
     }
 }
