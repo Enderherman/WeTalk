@@ -7,6 +7,7 @@
     <resultMap id="base_result_map" type="top.enderherman.wetalk.entity.po.ChatMessage">
         <!--id-->
         <id column="message_id" property="messageId"/>
+        <result column="client_message_id" property="clientMessageId"/>
         <!--会话id-->
         <result column="session_id" property="sessionId"/>
         <!--消息类型-->
@@ -36,7 +37,7 @@
 
     <!-- 通用查询结果列-->
     <sql id="base_column_list">
-        message_id
+        message_id,client_message_id
         ,session_id,message_type,message_content,send_user_id,
 		 send_user_nick_name,send_time,contact_id,contact_type,file_size,
 		 file_name,file_type,status
@@ -155,6 +156,9 @@
             <if test="bean.sessionId != null">
                 session_id,
             </if>
+            <if test="bean.clientMessageId != null">
+                client_message_id,
+            </if>
             <if test="bean.messageType != null">
                 message_type,
             </if>
@@ -192,6 +196,9 @@
         <trim prefix="values (" suffix=")" suffixOverrides=",">
             <if test="bean.sessionId!=null">
                 #{bean.sessionId},
+            </if>
+            <if test="bean.clientMessageId!=null">
+                #{bean.clientMessageId},
             </if>
             <if test="bean.messageType!=null">
                 #{bean.messageType},
@@ -236,6 +243,9 @@
             <if test="bean.messageId != null">
                 message_id,
             </if>
+            <if test="bean.clientMessageId != null">
+                client_message_id,
+            </if>
             <if test="bean.sessionId != null">
                 session_id,
             </if>
@@ -276,6 +286,9 @@
         <trim prefix="values (" suffix=")" suffixOverrides=",">
             <if test="bean.messageId!=null">
                 #{bean.messageId},
+            </if>
+            <if test="bean.clientMessageId!=null">
+                #{bean.clientMessageId},
             </if>
             <if test="bean.sessionId!=null">
                 #{bean.sessionId},
@@ -543,6 +556,14 @@
         select
         <include refid="base_column_list"/>
         from chat_message where message_id=#{messageId}
+    </select>
+
+    <select id="selectBySendUserIdAndClientMessageId" resultMap="base_result_map">
+        select
+        <include refid="base_column_list"/>
+        from chat_message
+        where send_user_id=#{sendUserId} and client_message_id=#{clientMessageId}
+        limit 1
     </select>
 
 </mapper>

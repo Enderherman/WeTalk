@@ -8,6 +8,11 @@ app_update、chat_message、chat_session、chat_session_user、group_info、user
 
 仅用于新建空数据库。不能作为已有数据库的升级脚本，也不会迁移本机历史数据。官方 MySQL 容器只在空数据目录的首次启动执行 docker-entrypoint-initdb.d 中的 SQL。
 
+已有数据库升级使用单独的顺序迁移脚本，不要重复执行：
+
+- `002-client-message-idempotency.sql` 为 `chat_message` 增加可空客户端幂等键及发送者组合唯一索引；旧桌面客户端不传该字段时仍可写入多条 `NULL`。
+- 应先备份数据库，再手工应用迁移并验证列/索引存在，然后部署需要该字段的后端版本。
+
 管理员账号、演示账号和测试联系人需后续明确初始化；注册流程会使用代码中的默认系统配置创建机器人联系人和欢迎消息。
 
 重新导出时，通过私有的 MySQL defaults 文件提供凭据：

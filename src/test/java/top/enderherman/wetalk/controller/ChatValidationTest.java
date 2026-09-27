@@ -33,7 +33,17 @@ class ChatValidationTest {
             proxy.addAdvice(new MethodValidationInterceptor(factory.getValidator()));
             ChatController controller = (ChatController) proxy.getProxy();
             assertThrows(ConstraintViolationException.class,
-                    () -> controller.sendMessage(null, "Upeer", "x".repeat(501), 2, null, null, null));
+                    () -> controller.sendMessage(null, "Upeer", "x".repeat(501), 2, null, null, null, null));
+        }
+    }
+
+    @Test void invalidClientMessageIdIsRejectedByTheActualSpringValidationProxy() {
+        try (var factory = Validation.buildDefaultValidatorFactory()) {
+            ProxyFactory proxy = new ProxyFactory(new ChatController());
+            proxy.addAdvice(new MethodValidationInterceptor(factory.getValidator()));
+            ChatController controller = (ChatController) proxy.getProxy();
+            assertThrows(ConstraintViolationException.class,
+                    () -> controller.sendMessage(null, "Upeer", "hello", 2, null, null, null, "not-a-uuid"));
         }
     }
 

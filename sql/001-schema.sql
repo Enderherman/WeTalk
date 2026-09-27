@@ -32,6 +32,7 @@ CREATE TABLE `app_update` (
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `chat_message` (
   `message_id` int NOT NULL AUTO_INCREMENT COMMENT 'id',
+  `client_message_id` varchar(36) DEFAULT NULL COMMENT '客户端消息幂等键',
   `session_id` varchar(32) NOT NULL COMMENT '会话id',
   `message_type` tinyint(1) NOT NULL COMMENT '消息类型',
   `message_content` varchar(500) DEFAULT NULL COMMENT '消息内容',
@@ -45,6 +46,7 @@ CREATE TABLE `chat_message` (
   `file_type` tinyint(1) DEFAULT NULL COMMENT '文件类型',
   `status` tinyint(1) DEFAULT NULL COMMENT '状态 0:正在发送 1:已发送',
   PRIMARY KEY (`message_id`),
+  UNIQUE KEY `uk_chat_message_send_client` (`send_user_id`,`client_message_id`),
   KEY `idx_session_id` (`session_id`) USING BTREE,
   KEY `idx_send_user_id` (`send_user_id`) USING BTREE,
   KEY `idx_receive_contact_id` (`contact_id`) USING BTREE,

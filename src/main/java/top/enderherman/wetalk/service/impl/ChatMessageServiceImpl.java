@@ -2,6 +2,7 @@ package top.enderherman.wetalk.service.impl;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -39,6 +40,7 @@ import java.io.File;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -268,17 +270,14 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         MessageTypeEnum messageTypeEnum = MessageTypeEnum.getByType(chatMessage.getMessageType());
         Integer status = MessageTypeEnum.MEDIA_CHAT == messageTypeEnum ? MessageStatusEnum.SENDING.getStatus() : MessageStatusEnum.SENT.getStatus();
 
-
-        //更新会话
-        ChatSession chatSession = new ChatSession();
-        if (UserContactTypeEnum.USER != contactTypeEnum) {
-            chatSession.setLastMessage(messageContent);
-        } else {
-            chatSession.setLastMessage(userInfoDto.getNickName() + ": " + messageContent);
+        String clientMessageId = chatMessage.getClientMessageId();
+        if (clientMessageId != null) {
+            if (messageTypeEnum != MessageTypeEnum.CHAT) throw new BusinessException(ResponseCodeEnum.CODE_600);
+            ChatMessage existing = chatMessageMapper.selectBySendUserIdAndClientMessageId(sendUserId, clientMessageId);
+            if (existing != null) {
+                return existingClientMessage(existing, sendUserId, contactId, sessionId, messageTypeEnum, messageContent);
+            }
         }
-        chatSession.setSessionId(sessionId);
-        chatSession.setLastReceiveTime(curTime);
-        chatSessionMapper.updateBySessionId(chatSession, sessionId);
 
         //记录消息消息表
         chatMessage.setSendTime(curTime);
@@ -288,7 +287,22 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         chatMessage.setSendUserId(sendUserId);
         chatMessage.setSendUserNickName(userInfoDto.getNickName());
         chatMessage.setContactType(contactTypeEnum.getType());
-        chatMessageMapper.insert(chatMessage);
+        try {
+            chatMessageMapper.insert(chatMessage);
+        } catch (DuplicateKeyException duplicateKeyException) {
+            if (clientMessageId == null) throw duplicateKeyException;
+            ChatMessage existing = chatMessageMapper.selectBySendUserIdAndClientMessageId(sendUserId, clientMessageId);
+            if (existing == null) throw duplicateKeyException;
+            return existingClientMessage(existing, sendUserId, contactId, sessionId, messageTypeEnum, messageContent);
+        }
+
+        ChatSession chatSession = new ChatSession();
+        chatSession.setLastMessage(UserContactTypeEnum.USER != contactTypeEnum
+                ? messageContent
+                : userInfoDto.getNickName() + ": " + messageContent);
+        chatSession.setSessionId(sessionId);
+        chatSession.setLastReceiveTime(curTime);
+        chatSessionMapper.updateBySessionId(chatSession, sessionId);
 
         //发送ws消息
         MessageSendDTO<?> messageSendDTO = CopyUtils.copy(chatMessage, MessageSendDTO.class);
@@ -328,6 +342,18 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         }
 
         return messageSendDTO;
+    }
+
+    private MessageSendDTO<?> existingClientMessage(ChatMessage existing, String sendUserId, String contactId,
+                                                    String sessionId, MessageTypeEnum messageType, String content) {
+        if (!Objects.equals(existing.getSendUserId(), sendUserId)
+                || !Objects.equals(existing.getContactId(), contactId)
+                || !Objects.equals(existing.getSessionId(), sessionId)
+                || !Objects.equals(existing.getMessageType(), messageType.getType())
+                || !Objects.equals(existing.getMessageContent(), content)) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
+        return CopyUtils.copy(existing, MessageSendDTO.class);
     }
 
     private void startAiStream(String prompt, Integer messageId, String sessionId, String contactId,

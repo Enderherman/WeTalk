@@ -15,6 +15,11 @@ public class ChatMessage implements Serializable {
 	private Integer messageId;
 
 	/**
+	 * 客户端生成的幂等键（仅网页文字消息使用）
+	 */
+	private String clientMessageId;
+
+	/**
 	 * 会话id
 	 */
 	private String sessionId;
@@ -81,6 +86,14 @@ public class ChatMessage implements Serializable {
 
 	public Integer getMessageId(){
 		return this.messageId;
+	}
+
+	public void setClientMessageId(String clientMessageId){
+		this.clientMessageId = clientMessageId;
+	}
+
+	public String getClientMessageId(){
+		return this.clientMessageId;
 	}
 
 	public void setSessionId(String sessionId){

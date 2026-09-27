@@ -30,6 +30,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Pattern;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -82,9 +83,13 @@ public class ChatController extends ABaseController {
                                                        @NotNull Integer messageType,
                                                        Long fileSize,
                                                        String fileName,
-                                                       Integer fileType) {
+                                                       Integer fileType,
+                                                       @Size(max = 36) @Pattern(regexp = "(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}") String clientMessageId) {
         MessageTypeEnum messageTypeEnum = MessageTypeEnum.getByType(messageType);
         if (messageTypeEnum == null || !ArrayUtil.contains(new Integer[]{MessageTypeEnum.CHAT.getType(), MessageTypeEnum.MEDIA_CHAT.getType()}, messageType)) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
+        if (clientMessageId != null && !MessageTypeEnum.CHAT.equals(messageTypeEnum)) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
         TokenUserInfoDto tokenUserInfoDto = getTokenUserDto(request);
@@ -96,6 +101,7 @@ public class ChatController extends ABaseController {
         chatMessage.setFileName(fileName);
         chatMessage.setFileType(fileType);
         chatMessage.setFileSize(fileSize);
+        chatMessage.setClientMessageId(clientMessageId);
         MessageSendDTO<?> messageSendDTO = chatMessageService.saveMessage(chatMessage, tokenUserInfoDto);
         return BaseResponse.success(messageSendDTO);
     }

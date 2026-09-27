@@ -18,6 +18,9 @@ public class MessageSendDTO<T> implements Serializable {
      */
     private Integer messageId;
 
+    /** 客户端消息幂等键；旧桌面客户端可以不传 */
+    private String clientMessageId;
+
     /**
      * 会话id
      */
