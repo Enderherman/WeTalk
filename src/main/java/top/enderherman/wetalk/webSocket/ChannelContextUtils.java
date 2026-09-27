@@ -13,6 +13,7 @@ import top.enderherman.wetalk.common.ResponseCodeEnum;
 import top.enderherman.wetalk.component.RedisComponent;
 import top.enderherman.wetalk.constants.Constants;
 import top.enderherman.wetalk.entity.dto.MessageSendDTO;
+import top.enderherman.wetalk.entity.dto.TokenUserInfoDto;
 import top.enderherman.wetalk.entity.enums.MessageTypeEnum;
 import top.enderherman.wetalk.entity.enums.UserContactApplyStatusEnum;
 import top.enderherman.wetalk.entity.enums.UserContactTypeEnum;
@@ -42,6 +43,9 @@ import java.util.stream.Collectors;
 public class ChannelContextUtils {
 
     public static final AttributeKey<String> USER_ID = AttributeKey.valueOf("wetalk.userId");
+    public static final AttributeKey<String> SESSION_ID = AttributeKey.valueOf("wetalk.sessionId");
+    public static final AttributeKey<String> CONNECTION_ID = AttributeKey.valueOf("wetalk.connectionId");
+    private static final AttributeKey<Long> LAST_SESSION_TOUCH_AT = AttributeKey.valueOf("wetalk.lastSessionTouchAt");
 
     @Resource
     private RedisComponent redisComponent;
@@ -59,7 +63,7 @@ public class ChannelContextUtils {
     private UserContactApplyMapper<UserContactApply, UserContactApplyQuery> userContactApplyMapper;
 
 
-    public static final ConcurrentHashMap<String, Channel> USER_CONTEXT_MAP = new ConcurrentHashMap<>();
+    public static final ConcurrentHashMap<String, ConcurrentHashMap<String, Channel>> USER_CONTEXT_MAP = new ConcurrentHashMap<>();
 
     public static final ConcurrentHashMap<String, ChannelGroup> GROUP_CONTEXT_MAP = new ConcurrentHashMap<>();
 
@@ -68,7 +72,19 @@ public class ChannelContextUtils {
      * 添加联系人
      */
     public void addContext(String userId, Channel channel) {
+        addContext(userId, null, channel);
+    }
+
+    public void addContext(TokenUserInfoDto session, Channel channel) {
+        if (session == null) return;
+        addContext(session.getUserId(), session.getSessionId(), channel);
+    }
+
+    private void addContext(String userId, String sessionId, Channel channel) {
         channel.attr(USER_ID).set(userId);
+        channel.attr(SESSION_ID).set(sessionId);
+        channel.attr(CONNECTION_ID).set(java.util.UUID.randomUUID().toString());
+        channel.attr(LAST_SESSION_TOUCH_AT).set(System.currentTimeMillis());
 
         //群聊
         List<String> contactList = redisComponent.getUserContactList(userId);
@@ -78,9 +94,12 @@ public class ChannelContextUtils {
                 addUserToGroup(contact, channel);
             }
         }
-        //用户
-        Channel previous = USER_CONTEXT_MAP.put(userId, channel);
-        if (previous != null && previous != channel) previous.close();
+        // 同一账号可以保留多个设备和浏览器连接。
+        USER_CONTEXT_MAP.compute(userId, (key, current) -> {
+            ConcurrentHashMap<String, Channel> channels = current == null ? new ConcurrentHashMap<>() : current;
+            channels.put(channel.attr(CONNECTION_ID).get(), channel);
+            return channels;
+        });
         redisComponent.saveUserHeartBeat(userId);
 
         //查询用户最后登录时间
@@ -128,7 +147,7 @@ public class ChannelContextUtils {
         messageSendDTO.setMessageType(MessageTypeEnum.INIT.getType());
         messageSendDTO.setContactId(userId);
         messageSendDTO.setExtentData(wsInitDataVO);
-        sendMessage(messageSendDTO,userId);
+        sendMessage(messageSendDTO, channel);
 
     }
 
@@ -136,8 +155,11 @@ public class ChannelContextUtils {
      * 增加群到会话中
      */
     public void addUser2Group(String userId, String groupId) {
-        Channel channel = USER_CONTEXT_MAP.get(userId);
-        addUserToGroup(groupId, channel);
+        ConcurrentHashMap<String, Channel> userChannels = USER_CONTEXT_MAP.get(userId);
+        if (userChannels == null) return;
+        for (Channel channel : userChannels.values()) {
+            addUserToGroup(groupId, channel);
+        }
     }
 
 
@@ -157,14 +179,17 @@ public class ChannelContextUtils {
      */
     public void removeContext(Channel channel) {
         String userId = channel.attr(USER_ID).get();
-        if (StringUtils.isEmpty(userId) || !USER_CONTEXT_MAP.remove(userId, channel)) {
-            return;
-        }
-        redisComponent.removeUserHeartBeat(userId);
-        // 更新用户最后离线时间
-        UserInfo userInfo = new UserInfo();
-        userInfo.setLastOffTime(System.currentTimeMillis());
-        userInfoMapper.updateByUserId(userInfo, userId);
+        if (StringUtils.isEmpty(userId)) return;
+        USER_CONTEXT_MAP.computeIfPresent(userId, (key, channels) -> {
+            String connectionId = channel.attr(CONNECTION_ID).get();
+            if (connectionId == null || !channels.remove(connectionId, channel)) return channels;
+            if (!channels.isEmpty()) return channels;
+            redisComponent.removeUserHeartBeat(userId);
+            UserInfo userInfo = new UserInfo();
+            userInfo.setLastOffTime(System.currentTimeMillis());
+            userInfoMapper.updateByUserId(userInfo, userId);
+            return null;
+        });
     }
 
     /**
@@ -206,11 +231,28 @@ public class ChannelContextUtils {
             return;
         }
         redisComponent.clearTokenUserInfoDto(userId);
-        Channel channel = USER_CONTEXT_MAP.get(userId);
-        if (channel == null) {
-            return;
+        ConcurrentHashMap<String, Channel> channels = USER_CONTEXT_MAP.get(userId);
+        if (channels != null) channels.values().forEach(Channel::close);
+    }
+
+    public void closeSession(String userId, String sessionId) {
+        if (StringUtils.isEmpty(userId) || StringUtils.isEmpty(sessionId)) return;
+        ConcurrentHashMap<String, Channel> channels = USER_CONTEXT_MAP.get(userId);
+        if (channels == null) return;
+        for (Channel channel : channels.values()) {
+            if (sessionId.equals(channel.attr(SESSION_ID).get())) channel.close();
         }
-        channel.close();
+    }
+
+    public void touchSessionActivity(Channel channel) {
+        String userId = channel.attr(USER_ID).get();
+        String sessionId = channel.attr(SESSION_ID).get();
+        if (StringUtils.isEmpty(userId) || StringUtils.isEmpty(sessionId)) return;
+        long now = System.currentTimeMillis();
+        Long lastTouch = channel.attr(LAST_SESSION_TOUCH_AT).get();
+        if (lastTouch != null && now - lastTouch < 60_000) return;
+        channel.attr(LAST_SESSION_TOUCH_AT).set(now);
+        redisComponent.touchUserSession(userId, sessionId);
     }
 
     /**
@@ -231,11 +273,9 @@ public class ChannelContextUtils {
         if (messageTypeEnum == MessageTypeEnum.LEAVE_GROUP || messageTypeEnum == MessageTypeEnum.REMOVE_GROUP) {
             String userId = (String) messageSendDTO.getExtentData();
             redisComponent.removeUserContact(userId, messageSendDTO.getContactId());
-            Channel channel = USER_CONTEXT_MAP.get(userId);
-            if (channel == null) {
-                return;
-            }
-            group.remove(channel);
+            ConcurrentHashMap<String, Channel> userChannels = USER_CONTEXT_MAP.get(userId);
+            if (userChannels == null) return;
+            for (Channel channel : userChannels.values()) group.remove(channel);
         }
         //解散群聊
         if (messageTypeEnum == MessageTypeEnum.DISSOLUTION_GROUP) {
@@ -252,26 +292,34 @@ public class ChannelContextUtils {
         if (receiveId == null) {
             return;
         }
-        Channel sendChannel = USER_CONTEXT_MAP.get(receiveId);
-        if (sendChannel == null) {
-            return;
+        ConcurrentHashMap<String, Channel> userChannels = USER_CONTEXT_MAP.get(receiveId);
+        if (userChannels == null || userChannels.isEmpty()) return;
+        for (Channel channel : userChannels.values()) {
+            channel.writeAndFlush(new TextWebSocketFrame(JSONUtil.toJsonStr(prepareMessage(messageSendDTO))));
         }
-        messageSendDTO = top.enderherman.wetalk.utils.CopyUtils.copy(messageSendDTO, MessageSendDTO.class);
+    }
+
+    private void sendMessage(MessageSendDTO<?> messageSendDTO, Channel channel) {
+        if (channel == null || !channel.isOpen()) return;
+        channel.writeAndFlush(new TextWebSocketFrame(JSONUtil.toJsonStr(prepareMessage(messageSendDTO))));
+    }
+
+    private MessageSendDTO<?> prepareMessage(MessageSendDTO<?> messageSendDTO) {
+        MessageSendDTO<?> delivered = top.enderherman.wetalk.utils.CopyUtils.copy(messageSendDTO, MessageSendDTO.class);
         // 相对于客户端而言 联系人就是发送人 所以转换一下再发送 好友申请时不 处理
-        if (MessageTypeEnum.ADD_FRIEND_SELF.getType().equals(messageSendDTO.getMessageType())) {
+        if (MessageTypeEnum.ADD_FRIEND_SELF.getType().equals(delivered.getMessageType())) {
             //从ExtentDATA中取出来 接收人的用户信息 加载到发送人的客户端
-            UserInfo userInfo = (UserInfo) messageSendDTO.getExtentData();
-            messageSendDTO.setMessageType(MessageTypeEnum.ADD_FRIEND.getType());
-            messageSendDTO.setContactId(userInfo.getUserId());
-            messageSendDTO.setContactName(userInfo.getNickName());
-            messageSendDTO.setExtentData(null);
-        } else if (!StringUtils.isEmpty(messageSendDTO.getSendUserId())) {
+            UserInfo userInfo = (UserInfo) delivered.getExtentData();
+            delivered.setMessageType(MessageTypeEnum.ADD_FRIEND.getType());
+            delivered.setContactId(userInfo.getUserId());
+            delivered.setContactName(userInfo.getNickName());
+            delivered.setExtentData(null);
+        } else if (!StringUtils.isEmpty(delivered.getSendUserId())) {
             //接收人refresh消息
-            messageSendDTO.setContactId(messageSendDTO.getSendUserId());
-            messageSendDTO.setContactName(messageSendDTO.getSendUserNickName());
+            delivered.setContactId(delivered.getSendUserId());
+            delivered.setContactName(delivered.getSendUserNickName());
         }
-        //服务端给客户端发送一条消息？
-        sendChannel.writeAndFlush(new TextWebSocketFrame(JSONUtil.toJsonStr(messageSendDTO)));
+        return delivered;
     }
 
 

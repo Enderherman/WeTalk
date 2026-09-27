@@ -9,18 +9,21 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import top.enderherman.wetalk.annotation.GlobalInterceptor;
 import top.enderherman.wetalk.common.BaseResponse;
+import top.enderherman.wetalk.common.ResponseCodeEnum;
 import top.enderherman.wetalk.component.RedisComponent;
 import top.enderherman.wetalk.config.AppConfig;
 import top.enderherman.wetalk.constants.Constants;
 import top.enderherman.wetalk.entity.dto.TokenUserInfoDto;
 import top.enderherman.wetalk.entity.po.UserInfo;
 import top.enderherman.wetalk.entity.vo.UserInfoVO;
+import top.enderherman.wetalk.entity.vo.UserSessionVO;
 import top.enderherman.wetalk.entity.vo.WebSessionVO;
 import top.enderherman.wetalk.exception.BusinessException;
 import top.enderherman.wetalk.service.UserInfoService;
 import top.enderherman.wetalk.service.RateLimitService;
 import top.enderherman.wetalk.utils.CopyUtils;
 import top.enderherman.wetalk.utils.RedisUtils;
+import top.enderherman.wetalk.utils.SessionDeviceLabel;
 import top.enderherman.wetalk.utils.StringUtils;
 import top.enderherman.wetalk.utils.WebAuthCookie;
 import top.enderherman.wetalk.webSocket.ChannelContextUtils;
@@ -30,9 +33,12 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.UUID;
 
 
@@ -102,7 +108,8 @@ public class UserInfoController extends ABaseController {
     }
 
     @PostMapping("/login")
-    public BaseResponse<?> login(@NotNull String checkCodeKey,
+    public BaseResponse<?> login(HttpServletRequest request,
+                                 @NotNull String checkCodeKey,
                                  @NotNull  String email,
                                  @NotNull String password,
 
@@ -113,6 +120,7 @@ public class UserInfoController extends ABaseController {
                 throw new BusinessException("图片验证码错误");
             }
             UserInfoVO userInfoVO = userInfoService.login(email, password);
+            setSessionDeviceName(userInfoVO, request);
             return getSuccessResponseVO(userInfoVO);
         } finally {
             redisUtils.delete(Constants.REDIS_KEY_CHECK_CODE + checkCodeKey);
@@ -123,7 +131,8 @@ public class UserInfoController extends ABaseController {
      * Web login stores the session token in an HttpOnly cookie and omits it from JSON.
      */
     @PostMapping("/webLogin")
-    public BaseResponse<WebSessionVO> webLogin(HttpServletResponse response,
+    public BaseResponse<WebSessionVO> webLogin(HttpServletRequest request,
+                                               HttpServletResponse response,
                                                @NotNull String checkCodeKey,
                                                @NotNull String email,
                                                @NotNull String password,
@@ -132,6 +141,7 @@ public class UserInfoController extends ABaseController {
             rateLimitService.enforce("account-login", email, 10, 600);
             validateCaptcha(checkCodeKey, checkCode);
             UserInfoVO userInfo = userInfoService.login(email, password);
+            setSessionDeviceName(userInfo, request);
             response.addHeader(HttpHeaders.SET_COOKIE,
                     WebAuthCookie.session(userInfo.getToken(), appConfig.isWebAuthCookieSecure()).toString());
             return getSuccessResponseVO(CopyUtils.copy(userInfo, WebSessionVO.class));
@@ -172,6 +182,59 @@ public class UserInfoController extends ABaseController {
         return getSuccessResponseVO(userInfoVO);
     }
 
+    @PostMapping("/listSessions")
+    @GlobalInterceptor
+    public BaseResponse<List<UserSessionVO>> listSessions(HttpServletRequest request) {
+        TokenUserInfoDto current = getTokenUserDto(request);
+        List<UserSessionVO> result = new ArrayList<>();
+        for (TokenUserInfoDto session : redisComponent.getUserSessions(current.getUserId())) {
+            UserSessionVO view = new UserSessionVO();
+            view.setSessionId(session.getSessionId());
+            view.setDeviceName(session.getDeviceName());
+            view.setCreatedAt(session.getCreatedAt());
+            view.setLastActiveAt(session.getLastActiveAt());
+            view.setCurrent(session.getSessionId().equals(current.getSessionId()));
+            result.add(view);
+        }
+        result.sort((first, second) -> Long.compare(
+                second.getLastActiveAt() == null ? 0 : second.getLastActiveAt(),
+                first.getLastActiveAt() == null ? 0 : first.getLastActiveAt()));
+        return getSuccessResponseVO(result);
+    }
+
+    @PostMapping("/revokeSession")
+    @GlobalInterceptor
+    public BaseResponse<?> revokeSession(HttpServletRequest request,
+                                         HttpServletResponse response,
+                                         @NotBlank String sessionId) {
+        TokenUserInfoDto current = getTokenUserDto(request);
+        TokenUserInfoDto target = redisComponent.getTokenUserInfoDtoBySessionId(sessionId);
+        if (target == null || !current.getUserId().equals(target.getUserId())) {
+            throw new BusinessException(ResponseCodeEnum.CODE_404);
+        }
+        TokenUserInfoDto removed = redisComponent.removeUserSession(current.getUserId(), sessionId);
+        if (removed == null) throw new BusinessException(ResponseCodeEnum.CODE_404);
+        channelContextUtils.closeSession(current.getUserId(), sessionId);
+        if (sessionId.equals(current.getSessionId())) {
+            response.addHeader(HttpHeaders.SET_COOKIE, WebAuthCookie.clear(appConfig.isWebAuthCookieSecure()).toString());
+        }
+        return getSuccessResponseVO(null);
+    }
+
+    @PostMapping("/revokeOtherSessions")
+    @GlobalInterceptor
+    public BaseResponse<?> revokeOtherSessions(HttpServletRequest request) {
+        TokenUserInfoDto current = getTokenUserDto(request);
+        if (current.getSessionId() == null || current.getSessionId().isBlank()) {
+            throw new BusinessException(ResponseCodeEnum.CODE_901);
+        }
+        List<TokenUserInfoDto> removed = redisComponent.removeOtherUserSessions(current.getUserId(), current.getSessionId());
+        for (TokenUserInfoDto session : removed) {
+            channelContextUtils.closeSession(current.getUserId(), session.getSessionId());
+        }
+        return getSuccessResponseVO(java.util.Map.of("revokedCount", removed.size()));
+    }
+
     /**
      * 修改用户信息
      */
@@ -210,11 +273,19 @@ public class UserInfoController extends ABaseController {
      */
     @RequestMapping("/logout")
     @GlobalInterceptor
-    public BaseResponse<?> updatePassword(HttpServletRequest request, HttpServletResponse response) {
+    public BaseResponse<?> logout(HttpServletRequest request, HttpServletResponse response) {
         TokenUserInfoDto tokenUserInfoDto = getTokenUserDto(request);
-        channelContextUtils.closeContact(tokenUserInfoDto.getUserId());
+        redisComponent.removeUserSession(tokenUserInfoDto.getUserId(), tokenUserInfoDto.getSessionId());
+        channelContextUtils.closeSession(tokenUserInfoDto.getUserId(), tokenUserInfoDto.getSessionId());
         response.addHeader(HttpHeaders.SET_COOKIE, WebAuthCookie.clear(appConfig.isWebAuthCookieSecure()).toString());
         return getSuccessResponseVO(null);
+    }
+
+    private void setSessionDeviceName(UserInfoVO userInfo, HttpServletRequest request) {
+        TokenUserInfoDto session = redisComponent.getTokenUserInfoDto(userInfo.getToken());
+        if (session == null) return;
+        session.setDeviceName(SessionDeviceLabel.fromUserAgent(request.getHeader(HttpHeaders.USER_AGENT)));
+        redisComponent.saveTokenUserInfoDto(session);
     }
 
     private void validateCaptcha(String checkCodeKey, String checkCode) {

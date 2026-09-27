@@ -20,6 +20,30 @@ WeTalk 是 App 和 Web 共用的 Java 17 / Spring Boot 聊天服务。后端提�
 
 未处理的服务错误返回通用 500 和随机 `X-Request-Id`；日志只记录请求方法、路径、错误类型和业务码，不记录查询参数、请求体或异常堆栈。业务拒绝、参数校验和重复记录使用不含用户提交内容的摘要日志。
 
+## 多端登录会话
+
+同一账号现在可以同时登录多个浏览器或客户端。Redis 为每个登录建立独立 sessionId，保存粗略设备标签、创建时间和最近活动时间；历史单 token Redis 映射会在访问时迁移，不需要 MySQL 数据库迁移。设备列表不返回 token、Cookie、原始 User-Agent 或 IP。
+
+- `POST /api/account/listSessions`：列出当前账号会话，并标记当前会话。
+- `POST /api/account/revokeSession`：按 sessionId 撤销当前账号的一台设备；会让对应 token 失效并关闭其 WebSocket。
+- `POST /api/account/revokeOtherSessions`：保留当前会话，撤销其他设备。
+- `/api/account/logout` 仅退出当前会话；修改密码和管理员强制下线仍会撤销该账号的全部会话。WebSocket ticket 消费时会再次确认其 session 仍有效。
+- 一个账号的消息会推送到所有在线设备；退出一个连接不会清除其他设备的在线状态。
+
+验证：Maven clean verify 92 项通过；真实本机后端/MySQL/Redis 使用三个独立浏览器会话验证会话列表、设备标签、当前标记、退出其他设备、撤销单个设备、旧 Cookie 返回 901 及对应 WebSocket 断开。网页 Chromium 桌面/移动视口也通过 Vite 代理完成界面操作，临时账号、数据库关联数据和 Redis 会话/限流键已清理。
+
+## 多端登录会话
+
+同一账号现在可以同时登录多个浏览器或客户端。Redis 为每个登录建立独立 sessionId，保存粗略设备标签、创建时间和最近活动时间；历史单 token Redis 映射会在访问时迁移，不需要 MySQL 数据库迁移。设备列表不返回 token、Cookie、原始 User-Agent 或 IP。
+
+- POST /api/account/listSessions：列出当前账号会话，并标记当前会话。
+- POST /api/account/revokeSession：按 sessionId 撤销当前账号的一台设备；对应 token 失效、WebSocket 断开。
+- POST /api/account/revokeOtherSessions：保留当前会话，撤销其他设备。
+- logout 只退出当前会话；改密和管理员强制下线仍撤销该账号的全部会话。WebSocket ticket 消费时会再次确认所属 session 仍有效。
+- 消息会推送到同一账号的所有在线设备；单个连接断开不会清除其他设备的在线状态。
+
+验证：Maven clean verify 92 项通过；真实本机后端/MySQL/Redis 使用三个独立浏览器会话验证会话列表、设备标签、当前标记、退出其他设备、撤销单个设备、旧 Cookie 返回 901 及对应 WebSocket 断开。网页 Chromium 桌面/移动视口也通过 Vite 代理完成界面操作；临时账号、数据库关联数据及 Redis 会话/限流键已清理。
+
 ## 本次修复
 
 详见 [CHANGELOG.md](CHANGELOG.md)。重点修复了私聊附件越权、群解散误断开连接、离线同步时间、过期连接清理、Redis 密码/数据库配置、旧 token 残留和首次部署配置；群成员配额改为读取正确的 `maxGroupMemberCount`。机器人和用户头像/封面上传都会校验格式、文件签名和 10 MiB 上限。同时启用 Jakarta 参数校验，管理员预留邮箱不能经公开注册获得权限，API 返回的用户对象不再含密码摘要。聊天视频可选上传 PNG 首帧封面，后端按系统图片大小配置检查扩展名、MIME 和文件签名，并通过已有的消息成员权限接口读取。文字聊天支持可选 UUID `clientMessageId`，用发送者唯一键安全处理相同内容的重试；会话列表在 INIT 中返回持久未读数，`POST /chat/markRead` 记录已读游标。已有数据库部署新后端前需备份并按顺序手工执行 `sql/002-client-message-idempotency.sql` 和 `sql/003-persistent-unread-cursor.sql`。
@@ -176,12 +200,12 @@ Dockerfile 使用官方 [Eclipse Temurin](https://hub.docker.com/_/eclipse-temur
 - 本后端没有添加任意 Origin 的全局 CORS 放行；用同源代理即可保留权限边界。
 - Netty WebSocket 会校验浏览器 Origin，允许来源由 WETALK_WEB_ALLOWED_ORIGINS 配置；无 Origin 的原生客户端继续兼容，Origin 为 null 时仅放行旧 token 查询参数，不放行 WebSocket ticket。生产域名确定后应把允许列表设置为该精确 HTTPS Origin。
 - 消息通过 POST /api/chat/sendMessage 发送，通过 WebSocket 接收。历史分页接口为 POST /api/chat/loadHistory，参数 contactId、beforeMessageId、pageSize（1..50）。
-- 默认单账号单活跃连接；本次没有实现 App 与 Web 同账号同时在线。开发联调应使用两个不同测试账号，后续多端会话需要专门设计。
+- 同一账号可同时登录 App、Web 或多个浏览器设备。用户设置页可查看设备会话、撤销指定会话或退出其他设备；改密码和管理员强制下线会撤销所有会话。
 
 ## 部署后必须验证
 
 健康检查只验证依赖和端口，实际业务还须覆盖：
-注册/图片验证码、登录、退出后复用旧 token 被拒绝、双账号互发消息、重连初始同步、私聊附件第三方下载被拒绝、群解散后其他会话仍在线，以及持久化文件重启后可读。启用 AI 时单独验证真实提供商的流式回答。
+注册/图片验证码、并行多设备登录、按设备撤销后旧 Cookie 被拒及目标 WebSocket 断开、当前会话保留、退出后复用旧 token 被拒绝、双账号互发消息、重连初始同步、私聊附件第三方下载被拒绝、群解散后其他会话仍在线，以及持久化文件重启后可读。启用 AI 时单独验证真实提供商的流式回答。
 
 ## 已知后续工作
 

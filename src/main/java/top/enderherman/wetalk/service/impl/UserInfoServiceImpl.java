@@ -258,13 +258,6 @@ public class UserInfoServiceImpl implements UserInfoService {
             throw new BusinessException("账号已被禁用");
         }
 
-        //心跳检测
-        Long lastHeartBeat = redisComponent.getUserHeartBeat(userInfo.getUserId());
-        if (lastHeartBeat != null) {
-            throw new BusinessException("此账号已在别处登录");
-        }
-
-        //查询联系人
         UserContactQuery userContactQuery = new UserContactQuery();
         userContactQuery.setUserId(userInfo.getUserId());
         userContactQuery.setStatus(UserContactStatusEnum.FRIEND.getStatus());
@@ -325,11 +318,7 @@ public class UserInfoServiceImpl implements UserInfoService {
         }
 
         //更新redis信息
-        TokenUserInfoDto tokenUserInfo = redisComponent.getTokenUserInfoDtoByUserId(userInfo.getUserId());
-        if (tokenUserInfo != null) {
-            tokenUserInfo.setNickName(contactNameUpdate);
-            redisComponent.saveTokenUserInfoDto(tokenUserInfo);
-        }
+        redisComponent.updateUserSessionsNickName(userInfo.getUserId(), contactNameUpdate);
 
         chatSessionUserService.updateRedundancyInfo(contactNameUpdate, userInfo.getUserId());
 

@@ -49,6 +49,8 @@ public class Constants {
     //token存储位置
     public static final String REDIS_KEY_WS_TOKEN = "wetalk:ws:token:";
     public static final String REDIS_KEY_WS_TICKET = "wetalk:ws:ticket:";
+    public static final String REDIS_KEY_WS_SESSION = "wetalk:ws:session:";
+    public static final String REDIS_KEY_WS_SESSIONS_USER = "wetalk:ws:sessions:user:";
     public static final String WEB_SESSION_COOKIE = "wetalk_session";
     public static final Integer REDIS_KEY_EXPIRES_WS_TICKET = 60;
 

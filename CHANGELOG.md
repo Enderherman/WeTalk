@@ -1,3 +1,17 @@
+## 多端会话管理（2026-09-27）
+
+- Redis 改为按 sessionId 管理多个登录会话；旧版每用户单 token 索引会在登录态访问时迁移，不需要数据库迁移。
+- 新增 POST /api/account/listSessions、/api/account/revokeSession 和 /api/account/revokeOtherSessions。响应只含设备标签、创建/活动时间和当前会话标志，不含 token、Cookie、原始 User-Agent 或 IP。
+- 登录登出按会话处理；撤销只清理对应 token/ticket 并关闭对应 WebSocket，改密与管理员强制下线仍撤销全部会话。消息推送和群成员在线连接支持同一用户的多条 WebSocket。
+- 验证：Maven clean verify 92 项通过；本机真实后端/MySQL/Redis 和 Chromium 桌面/移动浏览器验证三个并行会话、当前标志、单设备撤销、退出其他设备、旧 Cookie 返回 901、目标 WebSocket 断开和前端界面操作；临时数据库/Redis 数据已清理。
+
+## 多端会话管理（2026-09-27）
+
+- Redis 改为按 sessionId 管理多个登录会话；旧版每用户单 token 索引会在登录态访问时迁移，不需要数据库迁移。
+- 新增 `POST /api/account/listSessions`、`/api/account/revokeSession` 和 `/api/account/revokeOtherSessions`。响应只含设备标签、创建/活动时间和当前会话标志，不含 token、Cookie、原始 User-Agent 或 IP。
+- 登录登出按会话处理；撤销会话只清理对应 token/ticket 并关闭对应 WebSocket，改密与管理员强制下线仍撤销全部会话。消息推送和群成员在线连接支持同一用户的多条 WebSocket。
+- 验证：Maven clean verify 92 项通过；本机真实后端/MySQL/Redis 和 Chromium 桌面/移动浏览器验证三个并行会话、当前标志、单设备撤销、退出其他设备、旧 Cookie 返回 901、目标 WebSocket 断开和前端界面操作；临时数据库/Redis 数据已清理。
+
 ## 持久化会话未读游标（2026-09-27）
 
 - 为 `chat_session_user` 增加每账号/会话的 `last_read_message_id`，WebSocket INIT 的会话列表返回其后的未读消息数 `noReadCount`。

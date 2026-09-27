@@ -27,8 +27,9 @@ class WebSocketTicketTest {
 
     @Test
     void ticketIsStoredWithShortLifetimeAndConsumedAtomically() {
-        TokenUserInfoDto user = TokenUserInfoDto.builder().userId("U100").token("legacy-token").build();
+        TokenUserInfoDto user = TokenUserInfoDto.builder().userId("U100").token("legacy-token").sessionId("session-1").build();
         when(redis.getAndDelete(Constants.REDIS_KEY_WS_TICKET + "ticket-value")).thenReturn(user);
+        when(redis.get(Constants.REDIS_KEY_WS_TOKEN + "legacy-token")).thenReturn(user);
 
         component.saveWebSocketTicket("ticket-value", user);
         assertSame(user, component.consumeWebSocketTicket("ticket-value"));

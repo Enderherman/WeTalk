@@ -63,6 +63,7 @@ public class WebSocketHandler extends SimpleChannelInboundHandler<TextWebSocketF
             return;
         }
         redisComponent.saveUserHeartBeat(userId);
+        channelContextUtils.touchSessionActivity(channel);
     }
 
 
@@ -86,7 +87,7 @@ public class WebSocketHandler extends SimpleChannelInboundHandler<TextWebSocketF
                 ctx.channel().close();
                 return;
             }
-            channelContextUtils.addContext(tokenUserInfoDto.getUserId(), ctx.channel());
+            channelContextUtils.addContext(tokenUserInfoDto, ctx.channel());
         }
     }
 

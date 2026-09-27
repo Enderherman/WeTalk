@@ -163,4 +163,15 @@ public class RedisUtils<V> {
     public List<V> getQueueList(String key) {
         return redisTemplate.opsForList().range(key, 0, -1);
     }
+
+    /** Remove every matching list value. */
+    public long listRemove(String key, V value) {
+        try {
+            Long removed = redisTemplate.opsForList().remove(key, 0, value);
+            return removed == null ? 0 : removed;
+        } catch (SerializationException e) {
+            log.error("Redis operation failed", e);
+            throw new BusinessException(ResponseCodeEnum.CODE_506);
+        }
+    }
 }

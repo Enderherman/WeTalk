@@ -2,6 +2,7 @@ package top.enderherman.wetalk.controller;
 
 import top.enderherman.wetalk.common.BaseResponse;
 import top.enderherman.wetalk.common.ResponseCodeEnum;
+import top.enderherman.wetalk.component.RedisComponent;
 import top.enderherman.wetalk.constants.Constants;
 import top.enderherman.wetalk.entity.dto.TokenUserInfoDto;
 import top.enderherman.wetalk.exception.BusinessException;
@@ -18,6 +19,9 @@ public class ABaseController {
 
     protected static final String STATUS_ERROR = "error";
 
+
+    @Resource
+    private RedisComponent redisComponent;
 
     @Resource
     private RedisUtils<?> redisUtils;
@@ -79,6 +83,7 @@ public class ABaseController {
     protected TokenUserInfoDto getTokenUserDto(HttpServletRequest request) {
         String token = AuthTokenResolver.resolve(request);
         if (token == null) return null;
-        return (TokenUserInfoDto) redisUtils.get(Constants.REDIS_KEY_WS_TOKEN +token);
+        if (redisComponent != null) return redisComponent.getTokenUserInfoDto(token);
+        return (TokenUserInfoDto) redisUtils.get(Constants.REDIS_KEY_WS_TOKEN + token);
     }
 }

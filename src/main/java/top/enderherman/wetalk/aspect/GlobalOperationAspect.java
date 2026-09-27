@@ -13,11 +13,10 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import top.enderherman.wetalk.annotation.GlobalInterceptor;
 import top.enderherman.wetalk.common.ResponseCodeEnum;
-import top.enderherman.wetalk.constants.Constants;
+import top.enderherman.wetalk.component.RedisComponent;
 import top.enderherman.wetalk.entity.dto.TokenUserInfoDto;
 import top.enderherman.wetalk.exception.BusinessException;
 import top.enderherman.wetalk.utils.AuthTokenResolver;
-import top.enderherman.wetalk.utils.RedisUtils;
 import top.enderherman.wetalk.utils.StringUtils;
 
 
@@ -29,7 +28,7 @@ import java.lang.reflect.Method;
 public class GlobalOperationAspect {
 
     @Resource
-    private RedisUtils redisUtils;
+    private RedisComponent redisComponent;
 
     @Pointcut("@annotation(top.enderherman.wetalk.annotation.GlobalInterceptor)")
     private void pointcut() {
@@ -68,13 +67,14 @@ public class GlobalOperationAspect {
             throw new BusinessException(ResponseCodeEnum.CODE_901);
         }
 
-        TokenUserInfoDto userInfoDto = (TokenUserInfoDto) redisUtils.get(Constants.REDIS_KEY_WS_TOKEN + token);
+        TokenUserInfoDto userInfoDto = redisComponent.getTokenUserInfoDto(token);
         if (userInfoDto == null) {
             throw new BusinessException(ResponseCodeEnum.CODE_901);
         }
         if (checkAdmin && !userInfoDto.isAdmin()) {
             throw new BusinessException(ResponseCodeEnum.CODE_404);
         }
+        redisComponent.touchUserSession(userInfoDto.getUserId(), userInfoDto.getSessionId());
     }
 
 

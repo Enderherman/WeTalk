@@ -17,4 +17,8 @@ public class TokenUserInfoDto implements Serializable {
     private String userId;
     private String nickName;
     private boolean admin;
+    private String sessionId;
+    private String deviceName;
+    private Long createdAt;
+    private Long lastActiveAt;
 }

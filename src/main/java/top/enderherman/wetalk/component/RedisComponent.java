@@ -8,7 +8,12 @@ import top.enderherman.wetalk.entity.dto.TokenUserInfoDto;
 import top.enderherman.wetalk.utils.RedisUtils;
 
 import jakarta.annotation.Resource;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
 
 @Slf4j
 @Component("redisComponent")
@@ -37,22 +42,27 @@ public class RedisComponent {
      * 存储用户Token
      */
     public void saveTokenUserInfoDto(TokenUserInfoDto dto) {
-        String previous = (String) redisUtils.get(Constants.REDIS_KEY_WS_TOKEN_USERID + dto.getUserId());
-        if (previous != null && !previous.equals(dto.getToken())) {
-            redisUtils.delete(Constants.REDIS_KEY_WS_TOKEN + previous);
-        }
-        // 1.key: userId val: token
-        redisUtils.setEx(Constants.REDIS_KEY_WS_TOKEN_USERID + dto.getUserId(), dto.getToken(), Constants.REDIS_KEY_EXPIRES_DAY * 2);
-
-        // 2.key: token val: dto
-        redisUtils.setEx(Constants.REDIS_KEY_WS_TOKEN + dto.getToken(), dto, Constants.REDIS_KEY_EXPIRES_DAY * 2);
+        if (dto == null || dto.getUserId() == null || dto.getToken() == null) return;
+        initializeSessionMetadata(dto);
+        long ttl = Constants.REDIS_KEY_EXPIRES_DAY * 2L;
+        String sessionsKey = Constants.REDIS_KEY_WS_SESSIONS_USER + dto.getUserId();
+        redisUtils.listRemove(sessionsKey, dto.getSessionId());
+        redisUtils.listPush(sessionsKey, dto.getSessionId(), ttl);
+        redisUtils.setEx(Constants.REDIS_KEY_WS_SESSION + dto.getSessionId(), dto, ttl);
+        redisUtils.setEx(Constants.REDIS_KEY_WS_TOKEN + dto.getToken(), dto, ttl);
     }
 
     /**
      * 获取用户信息Token
      */
     public TokenUserInfoDto getTokenUserInfoDto(String token) {
-        return (TokenUserInfoDto) redisUtils.get(Constants.REDIS_KEY_WS_TOKEN + token);
+        if (token == null || token.isBlank()) return null;
+        TokenUserInfoDto dto = (TokenUserInfoDto) redisUtils.get(Constants.REDIS_KEY_WS_TOKEN + token);
+        if (dto != null && (dto.getSessionId() == null || dto.getSessionId().isBlank())) {
+            dto.setDeviceName("WeTalk 客户端（旧会话）");
+            saveTokenUserInfoDto(dto);
+        }
+        return dto;
     }
 
     public void saveWebSocketTicket(String ticket, TokenUserInfoDto user) {
@@ -61,16 +71,87 @@ public class RedisComponent {
 
     public TokenUserInfoDto consumeWebSocketTicket(String ticket) {
         if (ticket == null || ticket.isBlank()) return null;
-        return (TokenUserInfoDto) redisUtils.getAndDelete(Constants.REDIS_KEY_WS_TICKET + ticket);
+        TokenUserInfoDto ticketUser = (TokenUserInfoDto) redisUtils.getAndDelete(Constants.REDIS_KEY_WS_TICKET + ticket);
+        if (ticketUser == null || ticketUser.getToken() == null) return null;
+        TokenUserInfoDto activeSession = getTokenUserInfoDto(ticketUser.getToken());
+        if (activeSession == null || !Objects.equals(ticketUser.getUserId(), activeSession.getUserId())) return null;
+        return activeSession;
     }
 
     /**
      * 获取用户Token by id
      */
     public TokenUserInfoDto getTokenUserInfoDtoByUserId(String userId) {
+        List<TokenUserInfoDto> sessions = getUserSessions(userId);
+        return sessions.isEmpty() ? null : sessions.get(0);
+    }
 
-        String token = (String) redisUtils.get(Constants.REDIS_KEY_WS_TOKEN_USERID + userId);
-        return getTokenUserInfoDto(token);
+    public TokenUserInfoDto getTokenUserInfoDtoBySessionId(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) return null;
+        TokenUserInfoDto dto = (TokenUserInfoDto) redisUtils.get(Constants.REDIS_KEY_WS_SESSION + sessionId);
+        if (dto != null && (dto.getSessionId() == null || dto.getSessionId().isBlank())) {
+            dto.setSessionId(sessionId);
+            saveTokenUserInfoDto(dto);
+        }
+        return dto;
+    }
+
+    public List<TokenUserInfoDto> getUserSessions(String userId) {
+        if (userId == null || userId.isBlank()) return List.of();
+        migrateLegacySession(userId);
+        String sessionsKey = Constants.REDIS_KEY_WS_SESSIONS_USER + userId;
+        List<String> sessionIds = redisUtils.getQueueList(sessionsKey);
+        if (sessionIds == null || sessionIds.isEmpty()) return List.of();
+
+        Set<String> uniqueIds = new LinkedHashSet<>(sessionIds);
+        List<TokenUserInfoDto> sessions = new ArrayList<>();
+        for (String sessionId : uniqueIds) {
+            TokenUserInfoDto dto = getTokenUserInfoDtoBySessionId(sessionId);
+            if (dto == null || !userId.equals(dto.getUserId())) {
+                redisUtils.listRemove(sessionsKey, sessionId);
+                continue;
+            }
+            sessions.add(dto);
+        }
+        return sessions;
+    }
+
+    public TokenUserInfoDto removeUserSession(String userId, String sessionId) {
+        TokenUserInfoDto dto = getTokenUserInfoDtoBySessionId(sessionId);
+        if (dto == null || !userId.equals(dto.getUserId())) return null;
+        redisUtils.delete(Constants.REDIS_KEY_WS_TOKEN + dto.getToken(), Constants.REDIS_KEY_WS_SESSION + sessionId);
+        redisUtils.listRemove(Constants.REDIS_KEY_WS_SESSIONS_USER + userId, sessionId);
+        Object legacyToken = redisUtils.get(Constants.REDIS_KEY_WS_TOKEN_USERID + userId);
+        if (dto.getToken().equals(legacyToken)) {
+            redisUtils.delete(Constants.REDIS_KEY_WS_TOKEN_USERID + userId);
+        }
+        return dto;
+    }
+
+    public List<TokenUserInfoDto> removeOtherUserSessions(String userId, String currentSessionId) {
+        List<TokenUserInfoDto> removed = new ArrayList<>();
+        for (TokenUserInfoDto dto : getUserSessions(userId)) {
+            if (dto.getSessionId().equals(currentSessionId)) continue;
+            TokenUserInfoDto deleted = removeUserSession(userId, dto.getSessionId());
+            if (deleted != null) removed.add(deleted);
+        }
+        return removed;
+    }
+
+    public void updateUserSessionsNickName(String userId, String nickName) {
+        for (TokenUserInfoDto dto : getUserSessions(userId)) {
+            dto.setNickName(nickName);
+            saveTokenUserInfoDto(dto);
+        }
+    }
+
+    public void touchUserSession(String userId, String sessionId) {
+        TokenUserInfoDto dto = getTokenUserInfoDtoBySessionId(sessionId);
+        if (dto == null || !userId.equals(dto.getUserId())) return;
+        long now = System.currentTimeMillis();
+        if (dto.getLastActiveAt() != null && now - dto.getLastActiveAt() < 60_000) return;
+        dto.setLastActiveAt(now);
+        saveTokenUserInfoDto(dto);
     }
 
     /**
@@ -79,12 +160,40 @@ public class RedisComponent {
      * 先删 dto 再删 Token
      */
     public void clearTokenUserInfoDto(String userId) {
-        String userTokenKey = Constants.REDIS_KEY_WS_TOKEN_USERID + userId;
-        String token = (String) redisUtils.get(userTokenKey);
-        if (token != null) {
+        for (TokenUserInfoDto dto : getUserSessions(userId)) {
+            removeUserSession(userId, dto.getSessionId());
+        }
+        Object legacyToken = redisUtils.get(Constants.REDIS_KEY_WS_TOKEN_USERID + userId);
+        if (legacyToken instanceof String token) {
             redisUtils.delete(Constants.REDIS_KEY_WS_TOKEN + token);
         }
-        redisUtils.delete(userTokenKey);
+        redisUtils.delete(Constants.REDIS_KEY_WS_TOKEN_USERID + userId, Constants.REDIS_KEY_WS_SESSIONS_USER + userId);
+    }
+
+    private void migrateLegacySession(String userId) {
+        Object legacyValue = redisUtils.get(Constants.REDIS_KEY_WS_TOKEN_USERID + userId);
+        if (!(legacyValue instanceof String token)) return;
+        TokenUserInfoDto dto = (TokenUserInfoDto) redisUtils.get(Constants.REDIS_KEY_WS_TOKEN + token);
+        if (dto == null || !userId.equals(dto.getUserId())) {
+            redisUtils.delete(Constants.REDIS_KEY_WS_TOKEN_USERID + userId);
+            return;
+        }
+        if (dto.getSessionId() == null || dto.getSessionId().isBlank()) {
+            dto.setDeviceName("WeTalk 客户端（旧会话）");
+        }
+        saveTokenUserInfoDto(dto);
+    }
+
+    private void initializeSessionMetadata(TokenUserInfoDto dto) {
+        long now = System.currentTimeMillis();
+        if (dto.getSessionId() == null || dto.getSessionId().isBlank()) {
+            dto.setSessionId(UUID.randomUUID().toString());
+        }
+        if (dto.getDeviceName() == null || dto.getDeviceName().isBlank()) {
+            dto.setDeviceName("未知设备");
+        }
+        if (dto.getCreatedAt() == null) dto.setCreatedAt(now);
+        if (dto.getLastActiveAt() == null) dto.setLastActiveAt(now);
     }
 
     /**
