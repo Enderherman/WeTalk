@@ -121,6 +121,7 @@
 - DeepSeek OpenAI 兼容配置默认指向 `https://api.deepseek.com` 和当前模型 `deepseek-flash`；AI 默认仍关闭，API Key 只从运行环境读取。
 - 邮件发送失败时仅记录异常类与最具体根因类，保留通用客户端错误，避免日志输出地址、验证码、邮件内容、SMTP 对话或异常文本。
 - 验证：Maven clean verify 共 101 项通过，其中注册邮件服务新增 5 项测试；NAS 部署 readiness 返回 UP，DeepSeek API smoke test 返回 HTTP 200。首次部署时旧 QQ SMTP 授权码认证失败，邮件未发送并保持关闭。2026-09-28 更新授权码后，SMTP TLS/AUTH 与测试邮件提交通过；NAS 私有 `.env` 已启用邮件注册、关闭 SMTP debug 并保持权限 600，仅重建后端容器后 readiness 仍为 UP。收件箱确认及邮箱验证码注册全链路仍待完成。
+- 2026-09-28 本机 `mvn -B -ntp clean verify` 101 项通过后，NAS 真实 `POST /api/account/registerEmailCode` 返回 HTTP 200、业务码 200，邮件发送调用成功返回。图片验证码只用一次性 JSON 序列化 Redis 测试键，接口请求后已清理；收件箱到达与真实账号创建仍待确认。
 
 ## 0.0.2 — 2026-09-26
 

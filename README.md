@@ -67,6 +67,10 @@ python scripts/rename_database.py --defaults-file /private/mysql.cnf --apply
 
 对已初始化的 MySQL Docker 数据目录，仅修改 MYSQL_DATABASE 环境变量不会更名数据库；不要删除数据目录来重跑初始化。新部署则由 compose.infra.yaml 创建 wetalk 并导入空表结构。截至 2026-09-28，NAS 内网部署已完成：后端镜像 `wetalk-backend:0.0.3` 已启动，readiness 返回 `UP`；保留了原有 MySQL/Redis 容器与数据卷，数据库逻辑备份后应用 SQL 002/003 迁移。后端宿主机端口为回环绑定的 15050/15051，网页经共享 `wetalk-net` 同源代理访问。双账号注册登录、WebSocket、联系人申请、私聊、幂等重试、历史、type 17 已读回执及一个临时文本附件的 NAS 上传/下载字节校验均通过；临时数据和文件已清理。数据库逻辑备份已在隔离 MySQL 容器中恢复并重新应用迁移，字段/索引读回通过。附件持久化目录已有 2 个真实文件（约 3.1 MiB）；NAS 归档后恢复至隔离目录，文件数、相对路径和汇总 SHA-256 一致，原目录未改动；已保留权限为 600 的验证归档并清理隔离恢复副本。Web/后端镜像回滚演练也已通过。0.0.3 已部署且 readiness 返回 UP；DeepSeek API smoke test 返回 HTTP 200。QQ SMTP 已通过 TLS、AUTH 并接受发往配置邮箱的测试邮件；私有 `.env` 中已启用邮箱注册、关闭邮件调试并保持权限 600，后端重建后 readiness 为 UP。收件箱确认与邮箱验证码注册全链路仍待完成；HTTPS/WSS 和实体手机验收仍待完成。
 
+### 邮箱验证码 NAS 验收（2026-09-28）
+
+本机执行 `mvn -B -ntp clean verify`，101 项测试通过后才进行 NAS 验证。NAS 上真实 `POST /api/account/registerEmailCode` 返回 HTTP 200、业务码 200，Java 邮件发送调用成功返回；测试只使用一次性 JSON 序列化 CAPTCHA 键，接口完成后确认该键已删除。此结果证明后端接受了邮件发送，不代表已确认收件箱到达，也没有创建测试账号；完整注册链路仍待验收。SMTP 口令和邮件调试信息均未写入 Git。
+
 ## 本地构建与测试
 
 ~~~shell
