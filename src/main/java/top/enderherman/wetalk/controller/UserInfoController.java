@@ -22,6 +22,7 @@ import top.enderherman.wetalk.entity.vo.WebSessionVO;
 import top.enderherman.wetalk.exception.BusinessException;
 import top.enderherman.wetalk.service.UserInfoService;
 import top.enderherman.wetalk.service.RateLimitService;
+import top.enderherman.wetalk.service.RegistrationEmailService;
 import top.enderherman.wetalk.utils.CopyUtils;
 import top.enderherman.wetalk.utils.RedisUtils;
 import top.enderherman.wetalk.utils.SessionDeviceLabel;
@@ -35,12 +36,14 @@ import jakarta.servlet.http.HttpServletRequest;
 
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Pattern;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
+import java.util.Locale;
 
 
 @Validated
@@ -60,6 +63,9 @@ public class UserInfoController extends ABaseController {
 
     @Resource
     private RateLimitService rateLimitService;
+
+    @Resource
+    private RegistrationEmailService registrationEmailService;
 
     @Resource
     private ChannelContextUtils channelContextUtils;
@@ -89,23 +95,42 @@ public class UserInfoController extends ABaseController {
     }
 
 
-    @PostMapping("/register")
-    public BaseResponse<?> register(@NotNull String checkCodeKey,
-                                    @NotNull String email,
-                                    @NotNull @Pattern(regexp = Constants.REGEX_PASSWORD) String password,
-                                    @NotNull String nickName,
-                                    @NotNull String checkCode) {
+    @PostMapping("/registerEmailCode")
+    public BaseResponse<?> sendRegistrationEmailCode(HttpServletRequest request,
+                                    @NotBlank @Email String email,
+                                    @NotBlank String checkCodeKey,
+                                    @NotBlank String checkCode) {
+        String normalizedEmail = email.trim().toLowerCase(Locale.ROOT);
         try {
-            rateLimitService.enforce("account-register", email, 5, 3600);
-            if (!checkCode.equalsIgnoreCase((String) redisUtils.get(Constants.REDIS_KEY_CHECK_CODE + checkCodeKey))) {
-                throw new BusinessException("图片验证码错误");
-            }
+            rateLimitService.enforce("register-email", normalizedEmail, 3, 3600);
+            String clientAddress = request.getHeader("X-Real-IP");
+            if (clientAddress == null || clientAddress.isBlank()) clientAddress = request.getRemoteAddr();
+            rateLimitService.enforce("register-email-ip", clientAddress, 20, 3600);
+            validateCaptcha(checkCodeKey, checkCode);
+            registrationEmailService.ensureConfigured();
 
-            userInfoService.register(email, nickName, password);
+            // Return the same response for existing addresses to avoid account enumeration.
+            if (userInfoService.getUserInfoByEmail(normalizedEmail) == null) {
+                registrationEmailService.sendRegistrationCode(normalizedEmail);
+            }
             return getSuccessResponseVO(null);
         } finally {
             redisUtils.delete(Constants.REDIS_KEY_CHECK_CODE + checkCodeKey);
         }
+    }
+
+    @PostMapping("/register")
+    public BaseResponse<?> register(@NotBlank @Email String email,
+                                    @NotNull @Pattern(regexp = Constants.REGEX_PASSWORD) String password,
+                                    @NotBlank String nickName,
+                                    @NotBlank @Pattern(regexp = "[0-9]{6}") String emailCode) {
+        String normalizedEmail = email.trim().toLowerCase(Locale.ROOT);
+        rateLimitService.enforce("account-register", normalizedEmail, 5, 3600);
+        rateLimitService.enforce("register-email-verify", normalizedEmail, 10, 600);
+        registrationEmailService.verifyRegistrationCode(normalizedEmail, emailCode);
+        userInfoService.register(normalizedEmail, nickName, password);
+        registrationEmailService.consumeRegistrationCode(normalizedEmail);
+        return getSuccessResponseVO(null);
     }
 
     @PostMapping("/login")

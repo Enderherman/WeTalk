@@ -42,6 +42,7 @@ public class Constants {
 
     //验证码存储位置
     public static final String REDIS_KEY_CHECK_CODE = "wetalk:checkcode:";
+    public static final String REDIS_KEY_REGISTER_EMAIL_CODE = "wetalk:email:register:";
 
     //心跳存储位置
     public static final String REDIS_KEY_WS_USER_HEART_BEAT = "wetalk:ws:user:heartbeat:";

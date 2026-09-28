@@ -1,6 +1,6 @@
 services:
   wetalk:
-    image: wetalk-backend:0.0.2
+    image: wetalk-backend:0.0.3
     build: .
     restart: unless-stopped
     init: true

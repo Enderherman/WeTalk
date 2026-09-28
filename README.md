@@ -1,6 +1,6 @@
-# WeTalk 后端（0.0.2）
+# WeTalk 后端（0.0.3）
 
-WeTalk 是 App 和 Web 共用的 Java 17 / Spring Boot 聊天服务。后端提供账号、联系人、群聊、消息历史、文件和管理员接口；MySQL 保存业务数据，Redis 保存会话/缓存并由 Redisson 广播消息，Netty 推送 WebSocket。AI 默认关闭（`WETALK_AI_ENABLED=false`）；启用文字聊天时再配置 `OPENAI_API_KEY`。语音、转写、图片和 moderation 模型默认禁用，关闭 AI 时后端无需 AI 密钥即可启动。
+WeTalk 是 App 和 Web 共用的 Java 17 / Spring Boot 聊天服务。后端提供账号、联系人、群聊、消息历史、文件和管理员接口；MySQL 保存业务数据，Redis 保存会话/缓存并由 Redisson 广播消息，Netty 推送 WebSocket。注册需验证邮箱验证码，图片验证码用于请求邮件验证码。AI 默认关闭（`WETALK_AI_ENABLED=false`）；启用文字聊天时可通过 OpenAI 兼容接口连接 DeepSeek。语音、转写、图片和 moderation 模型默认禁用，关闭 AI 时后端无需 AI 密钥即可启动。
 
 ## 当前地址与协议
 
@@ -80,7 +80,7 @@ java -jar target/wetalk.jar
 python scripts/package_release.py
 ~~~
 
-这会生成 dist/wetalk-backend-0.0.2-nas.zip 和对应 SHA256。它包含 JAR、Docker 构建文件、Compose、环境模板、文档、测试统计和内部文件校验清单；不包含真实 .env、数据目录、Git 历史或数据库备份。
+这会生成 dist/wetalk-backend-0.0.3-nas.zip 和对应 SHA256。它包含 JAR、Docker 构建文件、Compose、环境模板、文档、测试统计和内部文件校验清单；不包含真实 .env、数据目录、Git 历史或数据库备份。
 
 ## 环境变量
 
@@ -105,9 +105,14 @@ Spring Boot 不会自动读取本地 .env；本地直接运行 Java 时要由终
 | SPRING_PROFILES_ACTIVE | dev；Compose 设为 docker |
 | WETALK_AI_ENABLED | false |
 | WETALK_AI_MODEL | none；启用 AI 时设 openai |
-| OPENAI_BASE_URL / OPENAI_MODEL / OPENAI_API_KEY | AI 启用时按提供商填写 |
+| OPENAI_BASE_URL / OPENAI_MODEL / DEEPSEEK_API_KEY | AI 启用时按提供商填写；DeepSeek 使用 `https://api.deepseek.com`、`deepseek-flash` 和私有运行环境中的 API Key；兼容旧变量 `OPENAI_API_KEY` |
+| WETALK_EMAIL_ENABLED | `false`；设置 `true` 启用注册邮箱验证码 |
+| MAIL_HOST / MAIL_PORT / MAIL_USERNAME / MAIL_PASSWORD / MAIL_PROTOCOL | SMTP 配置；QQ 邮箱使用 `smtp.qq.com`、`465`、`smtps`，账号口令只放入私有 `.env` |
+| MAIL_DEBUG | `false`；保持关闭，避免邮件认证信息和内容进入日志 |
 
-启用 AI 需同时设置 WETALK_AI_ENABLED=true 和 WETALK_AI_MODEL=openai，再填写 model、base URL、API Key。普通聊天部署保持 false/none。此行为通过 Spring AI 自动配置测试验证，不使用伪造 API Key。
+启用 AI 需同时设置 WETALK_AI_ENABLED=true 和 WETALK_AI_MODEL=openai，再填写 model、base URL、API Key。DeepSeek 当前 OpenAI 兼容配置为 `https://api.deepseek.com` 和 `deepseek-flash`。普通聊天部署保持 false/none。此行为通过 Spring AI 自动配置测试验证，不使用伪造 API Key。
+
+注册邮件验证码为 6 位数字、10 分钟有效；发送验证码前需通过图片验证码。发送与校验均按邮箱限流；已注册邮箱的发送接口使用一致响应，避免泄露账号是否存在。邮件默认关闭，启用后设置 `WETALK_EMAIL_ENABLED=true` 并提供 `MAIL_*` 环境变量。不要开启 `MAIL_DEBUG`，也不要将真实 SMTP 口令或 DeepSeek API Key 写入 Git。
 
 ### 请求频率限制
 
@@ -143,7 +148,7 @@ sudo docker compose -f compose.infra.yaml ps
 NAS 部署分为基础服务、后端和网页三个容器层：`compose.infra.yaml` 仅用于全新隔离环境的 MySQL/Redis，`compose.yaml` + `compose.nas.yaml` 启动后端，`WeTalkWeb/compose.nas.yaml` 启动静态网页。部署前必须核对 NAS 当前容器、网络、端口、目录和数据库数据；不要在未完成审计与备份前重建或覆盖现有服务。
 
 ~~~shell
-sudo docker build -t wetalk-backend:0.0.2 .
+sudo docker build -t wetalk-backend:0.0.3 .
 # 后续启动后端时才执行：
 sudo docker compose -f compose.yaml -f compose.nas.yaml up -d
 ~~~
