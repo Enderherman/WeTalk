@@ -103,6 +103,16 @@
         </if>
     </select>
 
+    <!-- 联系人搜索：仅返回有效群的编号和昵称 -->
+    <select id="selectActiveGroupsByNameFuzzy" resultMap="base_result_map">
+        select group_id,group_name
+        from group_info
+        where status=1
+          and group_name like concat('%', #{keyword}, '%') escape '='
+        order by group_name asc,group_id asc
+        limit #{offset},#{pageSize}
+    </select>
+
     <!-- 查询数量-->
     <select id="selectCount" resultType="java.lang.Integer">
         SELECT count(1) FROM group_info

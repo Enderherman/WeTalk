@@ -172,17 +172,30 @@ public class UserContactServiceImpl implements UserContactService {
      */
     @Override
     public UserContactSearchResultVO searchContact(String userId, String contactId) {
-        UserContactTypeEnum typeEnum = UserContactTypeEnum.getByPrefix(contactId);
-        if (typeEnum == null) {
-            return null;
+        contactId = StringUtils.isEmpty(contactId) ? "" : contactId.trim();
+        UserInfo userInfo;
+        UserContactTypeEnum typeEnum;
+        if (contactId.contains("@")) {
+            userInfo = userInfoMapper.selectPublicContactByEmail(contactId);
+            typeEnum = UserContactTypeEnum.USER;
+        } else {
+            typeEnum = UserContactTypeEnum.getByPrefix(contactId);
+            if (typeEnum == null) {
+                return null;
+            }
+            userInfo = typeEnum == UserContactTypeEnum.USER
+                    ? userInfoMapper.selectPublicContactByUserId(contactId)
+                    : null;
+        }
+        if (typeEnum == UserContactTypeEnum.USER) {
+            if (!isSearchableUser(userInfo)) {
+                return null;
+            }
+            contactId = userInfo.getUserId();
         }
         UserContactSearchResultVO resultVO = new UserContactSearchResultVO();
         switch (typeEnum) {
             case USER:
-                UserInfo userInfo = userInfoMapper.selectByUserId(contactId);
-                if (userInfo == null) {
-                    return null;
-                }
                 resultVO = CopyUtils.copy(userInfo, UserContactSearchResultVO.class);
                 break;
             case GROUP:
@@ -195,16 +208,87 @@ public class UserContactServiceImpl implements UserContactService {
         }
         resultVO.setContactType(typeEnum.toString());
         resultVO.setContactId(contactId);
-        //如果查的是自己
-        if (userId.equals(contactId)) {
-            resultVO.setStatus(UserContactStatusEnum.FRIEND.getStatus());
-            return resultVO;
+        resultVO.setStatus(getContactSearchStatus(userId, contactId));
+        return resultVO;
+    }
+
+    @Override
+    public List<UserContactSearchResultVO> searchContactsByKeyword(String userId, String keyword) {
+        List<UserContactSearchResultVO> results = new ArrayList<>();
+        String normalizedKeyword = StringUtils.isEmpty(keyword) ? "" : keyword.trim();
+        if (normalizedKeyword.isEmpty() || normalizedKeyword.length() > 254) {
+            return results;
         }
 
-        //查询是否是好友
+        if (normalizedKeyword.contains("@") || isContactId(normalizedKeyword)) {
+            String exactKeyword = isContactId(normalizedKeyword)
+                    ? Character.toUpperCase(normalizedKeyword.charAt(0)) + normalizedKeyword.substring(1)
+                    : normalizedKeyword;
+            UserContactSearchResultVO exactResult = searchContact(userId, exactKeyword);
+            if (exactResult != null) {
+                results.add(exactResult);
+            }
+            return results;
+        }
+
+        List<UserInfo> users = userInfoMapper.selectActiveContactsByNicknameFuzzy(
+                escapeLikeKeyword(normalizedKeyword), 0, 10);
+        if (users != null) {
+            for (UserInfo user : users) {
+                results.add(toUserSearchResult(userId, user));
+            }
+        }
+
+        List<GroupInfo> groups = groupInfoMapper.selectActiveGroupsByNameFuzzy(
+                escapeLikeKeyword(normalizedKeyword), 0, 10);
+        if (groups != null) {
+            for (GroupInfo group : groups) {
+                results.add(toGroupSearchResult(userId, group));
+            }
+        }
+
+        return results;
+    }
+
+    private boolean isContactId(String value) {
+        if (value.length() < 2) return false;
+        char prefix = Character.toUpperCase(value.charAt(0));
+        return (prefix == 'U' || prefix == 'G') && value.substring(1).matches("\\d+");
+    }
+
+    private boolean isSearchableUser(UserInfo userInfo) {
+        return userInfo != null
+                && Integer.valueOf(UserStatusEnum.ENABLE.getStatus()).equals(userInfo.getStatus())
+                && Integer.valueOf(0).equals(userInfo.getIsDelete());
+    }
+
+    private String escapeLikeKeyword(String value) {
+        return value.replace("=", "==").replace("%", "=%").replace("_", "=_");
+    }
+
+    private UserContactSearchResultVO toUserSearchResult(String userId, UserInfo userInfo) {
+        UserContactSearchResultVO result = CopyUtils.copy(userInfo, UserContactSearchResultVO.class);
+        result.setContactId(userInfo.getUserId());
+        result.setContactType(UserContactTypeEnum.USER.toString());
+        result.setStatus(getContactSearchStatus(userId, userInfo.getUserId()));
+        return result;
+    }
+
+    private UserContactSearchResultVO toGroupSearchResult(String userId, GroupInfo groupInfo) {
+        UserContactSearchResultVO result = new UserContactSearchResultVO();
+        result.setContactId(groupInfo.getGroupId());
+        result.setContactType(UserContactTypeEnum.GROUP.toString());
+        result.setNickName(groupInfo.getGroupName());
+        result.setStatus(getContactSearchStatus(userId, groupInfo.getGroupId()));
+        return result;
+    }
+
+    private Integer getContactSearchStatus(String userId, String contactId) {
+        if (userId.equals(contactId)) {
+            return UserContactStatusEnum.FRIEND.getStatus();
+        }
         UserContact userContact = userContactMapper.selectByUserIdAndContactId(userId, contactId);
-        resultVO.setStatus(userContact == null ? null : userContact.getStatus());
-        return resultVO;
+        return userContact == null ? null : userContact.getStatus();
     }
 
     /**

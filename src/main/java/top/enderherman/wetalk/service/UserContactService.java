@@ -77,6 +77,11 @@ public interface UserContactService {
 	UserContactSearchResultVO searchContact(String userId, String contactId);
 
 	/**
+	 * 按邮箱精确匹配，或按用户昵称/群名称模糊搜索。
+	 */
+	List<UserContactSearchResultVO> searchContactsByKeyword(String userId, String keyword);
+
+	/**
 	 * 申请加好友/群聊
 	 */
 	Integer apply(TokenUserInfoDto tokenUserInfoDto, String contactId, String applyInfo);

@@ -145,6 +145,28 @@
 		 </if>
 	</select>
 
+		<!-- 联系人搜索：不读取邮箱、密码、签名等私有字段 -->
+		<select id="selectPublicContactByUserId" resultMap="base_result_map">
+			select user_id,nick_name,sex,area_name,status,is_delete
+			from user_info
+			where user_id=#{userId}
+		</select>
+
+		<select id="selectPublicContactByEmail" resultMap="base_result_map">
+			select user_id,nick_name,sex,area_name,status,is_delete
+			from user_info
+			where email=#{email}
+		</select>
+
+		<select id="selectActiveContactsByNicknameFuzzy" resultMap="base_result_map">
+			select user_id,nick_name,sex,area_name
+			from user_info
+			where status=1 and is_delete=0
+			  and nick_name like concat('%', #{keyword}, '%') escape '='
+			order by nick_name asc,user_id asc
+			limit #{offset},#{pageSize}
+		</select>
+
 	<!-- 查询数量-->
 	<select id="selectCount" resultType="java.lang.Integer" >
 		 SELECT count(1) FROM user_info <include refid="query_condition" />

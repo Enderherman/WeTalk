@@ -52,6 +52,13 @@ public class UserContactController extends ABaseController {
         return getSuccessResponseVO(resultVO);
     }
 
+    @RequestMapping("/searchByKeyword")
+    @GlobalInterceptor
+    public BaseResponse<?> searchByKeyword(HttpServletRequest request, @NotNull String keyword) {
+        TokenUserInfoDto userDto = getTokenUserDto(request);
+        return getSuccessResponseVO(userContactService.searchContactsByKeyword(userDto.getUserId(), keyword));
+    }
+
     /**
      * 申请加好友/群
      */
