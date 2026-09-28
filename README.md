@@ -69,7 +69,7 @@ python scripts/rename_database.py --defaults-file /private/mysql.cnf --apply
 
 ### 邮箱验证码 NAS 验收（2026-09-28）
 
-本机执行 `mvn -B -ntp clean verify`，101 项测试通过后才进行 NAS 验证。NAS 上真实 `POST /api/account/registerEmailCode` 返回 HTTP 200、业务码 200，Java 邮件发送调用成功返回；测试只使用一次性 JSON 序列化 CAPTCHA 键，接口完成后确认该键已删除。此结果证明后端接受了邮件发送，不代表已确认收件箱到达，也没有创建测试账号；完整注册链路仍待验收。SMTP 口令和邮件调试信息均未写入 Git。
+本机执行 `mvn -B -ntp clean verify`，101 项测试通过后才进行 NAS 验证。NAS 上真实 `POST /api/account/registerEmailCode` 返回 HTTP 200、业务码 200，Java 邮件发送调用成功返回；首次诊断时用过一次性 JSON 序列化 CAPTCHA 键并确认请求后已删除。之后又从 NAS 实际注册页加载并正常解答真实图片验证码，再调用同一接口，仍返回 HTTP 200/业务码 200，未改写或绕过验证码。接口成功说明后端邮件发送调用返回成功，不代表收件箱到达，也没有创建测试账号；完整注册链路仍待验收。SMTP 口令和邮件调试信息均未写入 Git。
 
 ## 本地构建与测试
 
