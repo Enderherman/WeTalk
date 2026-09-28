@@ -119,6 +119,7 @@
 - 注册改为邮箱验证码流程：图片验证码保护邮件发送，6 位验证码 10 分钟过期，按邮箱和来源限流；已注册邮箱的发送接口使用一致结果，邮件发送失败时移除验证码。
 - 新增 QQ SMTP 环境变量配置，邮件功能默认关闭且 SMTP debug 默认关闭；真实账号口令只从私有 `.env` 提供。
 - DeepSeek OpenAI 兼容配置默认指向 `https://api.deepseek.com` 和当前模型 `deepseek-flash`；AI 默认仍关闭，API Key 只从运行环境读取。
+- 邮件发送失败时仅记录异常类与最具体根因类，保留通用客户端错误，避免日志输出地址、验证码、邮件内容、SMTP 对话或异常文本。
 - 验证：Maven clean verify 共 101 项通过，其中注册邮件服务新增 5 项测试；NAS 部署 readiness 返回 UP，DeepSeek API smoke test 返回 HTTP 200。首次部署时旧 QQ SMTP 授权码认证失败，邮件未发送并保持关闭。2026-09-28 更新授权码后，SMTP TLS/AUTH 与测试邮件提交通过；NAS 私有 `.env` 已启用邮件注册、关闭 SMTP debug 并保持权限 600，仅重建后端容器后 readiness 仍为 UP。收件箱确认及邮箱验证码注册全链路仍待完成。
 
 ## 0.0.2 — 2026-09-26

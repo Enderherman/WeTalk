@@ -5,6 +5,8 @@ import org.springframework.mail.MailException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import top.enderherman.wetalk.common.ResponseCodeEnum;
 import top.enderherman.wetalk.constants.Constants;
 import top.enderherman.wetalk.exception.BusinessException;
@@ -18,6 +20,7 @@ import java.util.Locale;
 @Service
 public class RegistrationEmailService {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(RegistrationEmailService.class);
     private static final int CODE_LENGTH = 6;
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
@@ -61,6 +64,10 @@ public class RegistrationEmailService {
         try {
             mailSender.send(message);
         } catch (MailException error) {
+            Throwable cause = error.getMostSpecificCause();
+            LOGGER.warn("Registration email delivery failed; exceptionType={}, causeType={}",
+                    error.getClass().getSimpleName(),
+                    cause == null ? "none" : cause.getClass().getSimpleName());
             redisUtils.delete(redisKey);
             throw new BusinessException("验证码发送失败，请稍后重试");
         }

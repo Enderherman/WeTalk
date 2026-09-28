@@ -112,7 +112,7 @@ Spring Boot 不会自动读取本地 .env；本地直接运行 Java 时要由终
 
 启用 AI 需同时设置 WETALK_AI_ENABLED=true 和 WETALK_AI_MODEL=openai，再填写 model、base URL、API Key。DeepSeek 当前 OpenAI 兼容配置为 `https://api.deepseek.com` 和 `deepseek-flash`。普通聊天部署保持 false/none。此行为通过 Spring AI 自动配置测试验证，不使用伪造 API Key。
 
-注册邮件验证码为 6 位数字、10 分钟有效；发送验证码前需通过图片验证码。发送与校验均按邮箱限流；已注册邮箱的发送接口使用一致响应，避免泄露账号是否存在。邮件默认关闭，启用后设置 `WETALK_EMAIL_ENABLED=true` 并提供 `MAIL_*` 环境变量。不要开启 `MAIL_DEBUG`，也不要将真实 SMTP 口令或 DeepSeek API Key 写入 Git。
+注册邮件验证码为 6 位数字、10 分钟有效；发送验证码前需通过图片验证码。发送与校验均按邮箱限流；已注册邮箱的发送接口使用一致响应，避免泄露账号是否存在。邮件默认关闭，启用后设置 `WETALK_EMAIL_ENABLED=true` 并提供 `MAIL_*` 环境变量。不要开启 `MAIL_DEBUG`，也不要将真实 SMTP 口令或 DeepSeek API Key 写入 Git。邮件发送失败日志只记录异常类别和根因类别，不记录邮箱、验证码、邮件内容、SMTP 对话或异常消息。
 
 ### 请求频率限制
 
