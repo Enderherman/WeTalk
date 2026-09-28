@@ -3,6 +3,7 @@
 - `/api/contact/search` 支持用邮箱精确查找用户；新增受登录保护的 `/api/contact/searchByKeyword`，支持邮箱/编号精确匹配，以及用户昵称和群昵称子串匹配，最多返回 10 位用户和 10 个群聊。
 - 搜索查询只读取展示所需的公开字段；不返回邮箱，邮箱查找也不加载邮箱或密码列；禁用和已删除用户不会出现在搜索结果中。
 - 验证：Maven `clean verify` 106 项通过；WeTalkWeb 265 项单测、类型检查和生产构建通过；WeTalkApp 生产构建通过。
+- 部署：NAS 后端与网页容器已更新，readiness/`/healthz` 均返回 HTTP 200；未登录的真实 API 请求按预期返回业务码 901。旧后端和网页镜像分别保存在 `wetalk-backend:0.0.3-pre-contact-search-20260929` 与 `wetalk-web:0.1.0-pre-contact-search-20260929`。没有临时登录账号，因此未执行带登录态的 NAS 联系人查询。
 
 ## NAS 容器端口默认本机绑定（2026-09-28）
 
