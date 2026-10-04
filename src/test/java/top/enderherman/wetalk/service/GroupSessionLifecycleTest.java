@@ -3,6 +3,8 @@ package top.enderherman.wetalk.service;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import top.enderherman.wetalk.component.RedisComponent;
 import top.enderherman.wetalk.entity.enums.MessageTypeEnum;
 import top.enderherman.wetalk.entity.po.*;
 import top.enderherman.wetalk.entity.query.*;
@@ -24,6 +26,7 @@ class GroupSessionLifecycleTest {
     private ChatMessageMapper<ChatMessage, ChatMessageQuery> chatMessageMapper;
     private UserInfoMapper<UserInfo, UserInfoQuery> userInfoMapper;
     private MessageHandler messageHandler;
+    private RedisComponent redis;
 
     @SuppressWarnings("unchecked")
     @BeforeEach
@@ -36,6 +39,7 @@ class GroupSessionLifecycleTest {
         chatMessageMapper = mock(ChatMessageMapper.class);
         userInfoMapper = mock(UserInfoMapper.class);
         messageHandler = mock(MessageHandler.class);
+        redis = mock(RedisComponent.class);
 
         ReflectionTestUtils.setField(service, "groupInfoMapper", groupInfoMapper);
         ReflectionTestUtils.setField(service, "userContactMapper", userContactMapper);
@@ -44,6 +48,7 @@ class GroupSessionLifecycleTest {
         ReflectionTestUtils.setField(service, "chatMessageMapper", chatMessageMapper);
         ReflectionTestUtils.setField(service, "userInfoMapper", userInfoMapper);
         ReflectionTestUtils.setField(service, "messageHandler", messageHandler);
+        ReflectionTestUtils.setField(service, "redisComponent", redis);
     }
 
     @Test
@@ -62,6 +67,29 @@ class GroupSessionLifecycleTest {
         service.leaveGroup("U200", "G300", MessageTypeEnum.LEAVE_GROUP);
 
         verify(chatSessionUserMapper).deleteByUserIdAndContactId("U200", "G300");
+        verify(redis).removeUserContact("U200", "G300");
+    }
+
+    @Test
+    void offlineGroupPermissionIsRevokedAfterCommitWithoutAnyLiveChannel() {
+        GroupInfo group = new GroupInfo();
+        group.setGroupId("G300");
+        group.setGroupOwnId("U100");
+        group.setStatus(1);
+        when(groupInfoMapper.selectByGroupId("G300")).thenReturn(group);
+        when(userContactMapper.deleteByUserIdAndContactId("U200", "G300")).thenReturn(1);
+        UserInfo user = new UserInfo();
+        user.setNickName("Member");
+        when(userInfoMapper.selectByUserId("U200")).thenReturn(user);
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.leaveGroup("U200", "G300", MessageTypeEnum.REMOVE_GROUP);
+            verify(redis, never()).removeUserContact(anyString(), anyString());
+            TransactionSynchronizationManager.getSynchronizations().forEach(callback -> callback.afterCommit());
+            verify(redis).removeUserContact("U200", "G300");
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     @Test

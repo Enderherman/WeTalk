@@ -3,6 +3,8 @@ package top.enderherman.wetalk.service.impl;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 import top.enderherman.wetalk.common.ResponseCodeEnum;
 import top.enderherman.wetalk.component.RedisComponent;
@@ -338,6 +340,15 @@ public class GroupInfoServiceImpl implements GroupInfoService {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
         chatSessionUserMapper.deleteByUserIdAndContactId(userId, groupId);
+        // 权限缓存清理不依赖在线群通道；离线退群/移除也必须撤销 REST 权限。
+        Runnable revokeContact = () -> redisComponent.removeUserContact(userId, groupId);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() { revokeContact.run(); }
+            });
+        } else {
+            revokeContact.run();
+        }
         UserInfo user = userInfoMapper.selectByUserId(userId);
         String sessionId = StringUtils.getChatSessionId4Group(groupId);
         Date curTime = new Date();
