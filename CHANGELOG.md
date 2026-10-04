@@ -249,4 +249,3 @@
 - type 6 在上传提交后携带完整最终元数据：会话、发送者、原发送时间、文件名、字节大小、文件类型和状态。数据库历史消息保持 type 5，完成通知为 type 6。
 - 控制事件 17/18 不额外镜像，群聊沿既有群通道分发。客户端须按 messageId/clientMessageId 合并 HTTP/WS 回显，本人消息不增加未读。协议见 `docs/multi-device-message-sync.md`。
 - 验证：新增 10 项 Netty 多通道与服务回归，修复前 6 项失败证实问题；修复后 `mvn -B -ntp clean verify` 196 项全通过、0 跳过。真实跨端联调在协调更新隔离 JAR 后进行，本提交未部署或重启服务。
-
