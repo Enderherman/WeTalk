@@ -1,227 +1,138 @@
-# WeTalk 后端（0.0.3）
+# WeTalk 后端
 
-WeTalk 是 App 和 Web 共用的 Java 17 / Spring Boot 聊天服务。后端提供账号、联系人、群聊、消息历史、文件和管理员接口；MySQL 保存业务数据，Redis 保存会话/缓存并由 Redisson 广播消息，Netty 推送 WebSocket。注册需验证邮箱验证码，图片验证码用于请求邮件验证码。AI 默认关闭（`WETALK_AI_ENABLED=false`）；启用文字聊天时可通过 OpenAI 兼容接口连接 DeepSeek。语音、转写、图片和 moderation 模型默认禁用，关闭 AI 时后端无需 AI 密钥即可启动。
+WeTalk 为[桌面客户端](https://github.com/Enderherman/WeTalkApp)和 [Web 客户端](https://github.com/Enderherman/WeTalkWeb)提供统一聊天服务。当前 Maven 版本为 `0.0.3`，技术栈为 Java 17、Spring Boot 3.4.5、MyBatis、MySQL、Redis/Redisson 和 Netty WebSocket。
 
-## 当前地址与协议
+当前源码包含账号与邮箱注册、好友申请与拉黑、私有备注、群管理、历史消息、未读与已读游标、附件与媒体读取、登录设备管理、管理员配置和版本发布。AI 文字聊天通过 OpenAI 兼容接口接入，默认关闭。
 
-本轮附件边界及重试规则见 [附件上传说明](docs/attachment-upload.md)。2026-10-04 当前后端全量测试为 184/184；代码与真实隔离环境验证完成情况分别记录，生产数据库迁移和 NAS 部署仍需单独执行。
+生产域名：留空，待确定。本轮功能与文档改动尚未部署 NAS；历史部署记录统一保存在 [CHANGELOG](CHANGELOG.md)，不能作为当前线上版本证明。
 
-| 项目 | 默认地址/行为 |
-|---|---|
-| HTTP API | http://主机:5050/api |
-| WebSocket | Web: ws://主机:5051/ws?ticket=短时票据；Electron 兼容旧 token 参数 |
-| 就绪检查 | GET /api/actuator/health/readiness |
-| 健康检查 | GET /api/actuator/health |
-| 登录态 | Web 使用 HttpOnly Cookie；Electron 兼容 token 请求头；失败业务码 901 |
-| 头像/封面图片 | 用户资料、群资料和机器人头像接受 PNG、JPEG、GIF、BMP、WebP；扩展名、MIME 与文件签名需匹配，每个文件最多 10 MiB |
-| 返回值 | status、code、message、data；客户端按业务 code 判断结果 |
-| 账号注册 | 图片验证码保护邮件发送；注册须提交邮件中的 6 位验证码，验证邮箱归属 |
-| AI | 默认不启用，无 AI 密钥也能启动普通聊天 |
+## 本地启动
 
-生产反向代理应使用 HTTPS/WSS，并保持 /api、/ws 两个路径；HTTPS 部署设 WETALK_WEB_AUTH_COOKIE_SECURE=true，并将 WETALK_WEB_ALLOWED_ORIGINS 设为实际网页 Origin。健康接口仅返回 UP/DOWN，不公开配置或数据库详情；就绪检查同时检查 MySQL、Redis 和 WebSocket 是否成功绑定。
+准备 JDK 17 或兼容的新版本、Maven 3.9+、MySQL 8 和 Redis。项目没有 Maven Wrapper。数据库默认名为 `wetalk`，文件目录必须可写并持久保留。
 
-未处理的服务错误返回通用 500 和随机 `X-Request-Id`；日志只记录请求方法、路径、错误类型和业务码，不记录查询参数、请求体或异常堆栈。业务拒绝、参数校验和重复记录使用不含用户提交内容的摘要日志。
+1. 根据 [SQL 说明](sql/README.md)初始化空库，或为已有库执行尚未应用的迁移。
+2. 参照 [.env.example](.env.example)设置数据库、Redis 和文件目录。直接运行 Java 时须向进程提供环境变量；Spring Boot 不会自动加载本地 `.env`。
+3. 在仓库根目录构建并启动：
 
-## 多端登录会话
-
-同一账号最多同时保留一台电脑客户端和一个浏览器会话；同类设备新登录会撤销该类别的旧 token 并关闭对应 WebSocket。Redis 为每个登录建立独立 sessionId 和 `deviceType`，保存粗略设备标签、创建时间及最近活动时间；历史单 token 映射在访问时迁移，不需要 MySQL 数据库迁移。设备列表不返回 token、Cookie、原始 User-Agent 或 IP。
-
-- `POST /api/account/listSessions`：列出当前账号会话，并标记当前会话。
-- `POST /api/account/revokeSession`：按 sessionId 撤销当前账号的一台设备；会让对应 token 失效并关闭其 WebSocket。
-- `POST /api/account/revokeOtherSessions`：保留当前会话，撤销其他设备。
-- `/api/account/logout` 仅退出当前会话；修改密码和管理员强制下线仍会撤销该账号的全部会话。WebSocket ticket 消费时会再次确认其 session 仍有效。
-- 一个账号的消息会推送到所有在线设备；退出一个连接不会清除其他设备的在线状态。
-
-验证：Maven clean verify 96 项、WeTalkWeb 244 项单测、类型检查和生产构建通过；真实本机后端/MySQL/Redis 验证同类桌面/浏览器重登会撤销旧 token/Cookie 和 WebSocket、保留另一类别会话，并发同类桌面登录也只留一个有效 token，并始终最多一台客户端加一个浏览器。真实双账号验证私聊 type 17 已读回执、重复游标不重复通知及发送方重连恢复对端游标。测试账号、会话和 Redis 限流键已清理。
-
-## 本次修复
-
-2026-10-04 功能对齐：删除好友后可恢复原关系与会话，保留历史和已读游标；删除操作不会覆盖对方主动拉黑。群主邀请必须满足双向有效好友、账号正常和群未解散，并先校验整批与人数配额；已解散群不占建群名额。群头像/封面新增与个人头像一致的验证。
-
-个人资料接口只保存昵称、性别、签名、地区及好友加入方式，忽略客户端提交的删除标记、账号状态、邮箱、密码和在线时间等内部字段。昵称/签名/地区长度和枚举值由服务端验证，未提交的字段仍支持局部更新。
-
-私有好友备注：`POST /contact/saveRemark` 保存或清空当前账号的好友备注；好友列表、资料、搜索结果和 INIT 增加 `remark`，真实名称保持不变。type 18 仅同步本人设备，不生成聊天消息。部署前执行 SQL 006，契约见 [私有好友备注](docs/contact-remarks.md)。
-
-已有数据库在部署本轮版本前，需备份后执行 `sql/004-session-contact-name.sql`，将会话名称和发送者昵称列扩到 40 字符。该迁移解决合法长昵称/群名的 SQL 截断，初始化 SQL 已同步；本轮只提供脚本，没有执行真实数据库迁移。
-
-详见 [CHANGELOG.md](CHANGELOG.md)。重点修复了私聊附件越权、群解散误断开连接、离线同步时间、过期连接清理、Redis 密码/数据库配置、旧 token 残留和首次部署配置；群成员配额改为读取正确的 `maxGroupMemberCount`。机器人和用户头像/封面上传都会校验格式、文件签名和 10 MiB 上限。同时启用 Jakarta 参数校验，管理员预留邮箱不能经公开注册获得权限，API 返回的用户对象不再含密码摘要。聊天视频可选上传 PNG 首帧封面，后端按系统图片大小配置检查扩展名、MIME 和文件签名，并通过已有的消息成员权限接口读取。文字聊天支持可选 UUID `clientMessageId`，用发送者唯一键安全处理相同内容的重试；INIT 会话列表返回本人未读数和私聊对端的 `peerReadMessageId`；`POST /chat/markRead` 单调推进游标，并在私聊游标前进时通过 WebSocket type 17 通知发送者。群聊只维护本人未读游标，不发送个人已读回执。已有数据库部署新后端前需备份并按顺序手工执行 `sql/002-client-message-idempotency.sql` 和 `sql/003-persistent-unread-cursor.sql`。
-
-管理员账号须由可信的数据库初始化或现有账号配置完成，ADMIN_EMAILS 只填写已核实身份的邮箱；不能依靠公开注册创建管理员。已有配置曾包含真实连接信息时，需要在实际服务上更换相应凭据，当前文件改为环境变量不会清理 Git 历史。
-
-## 运行条件
-
-- JDK 17 或兼容的更新 JDK、Maven 3.9+。
-- 可访问的 MySQL（数据库已建好，已有 WeTalk 表结构和所需初始数据）。
-- 可访问的 Redis。Spring Redis 和 Redisson 共用 host、port、password、username、database、TLS 设置。
-- 可写的文件目录，重启容器时必须保留。
-- AI 使用 OpenAI 兼容接口时，还需要相应 provider/model/API Key。
-
-sql/001-schema.sql 基于本机 MySQL 8.0.31 wetalk 导出的 9 张业务表维护，目前另含发布事务锁表 app_release_lock 和固定锁行，共 10 张表；不含用户、密码摘要、聊天记录等私有数据。它只用于空数据库初始化，不是已有数据库升级脚本；参见 [SQL 说明](sql/README.md)。演示账号和管理员账号另行创建，旧数据库/文件的数据迁移需单独备份处理。
-
-本项目没有 Maven Wrapper，下面使用安装好的 mvn。
-
-## 数据库统一命名为 wetalk
-
-后端默认 JDBC 地址、Docker 首次初始化、MySQL 健康检查、环境模板和准备/导出脚本均使用 wetalk。已有环境的 DB_URL 也必须指向 /wetalk。
-
-本机已有的 easychat 数据库采用一次 RENAME TABLE 将 9 张 InnoDB 业务表整体迁到 wetalk，原有记录和索引保持。迁移前保留全量私有备份，迁移后逐表核对行数和 CHECKSUM；旧 easychat 保留为空 schema，便于回退，没有 DROP DATABASE。MySQL 的[跨库重命名说明](https://dev.mysql.com/doc/refman/8.0/en/rename-table.html)解释了该操作和触发器等限制。
-
-对其他已经运行的旧环境，先停止后端并关闭旧库连接；脚本默认只检查，--apply 才执行：
-
-~~~shell
-python scripts/rename_database.py --defaults-file /private/mysql.cnf
-python scripts/rename_database.py --defaults-file /private/mysql.cnf --apply
-~~~
-
-脚本只处理已知 9 张 InnoDB 表，拒绝有对象的目标库及触发器/存储过程/事件等复杂场景；会把备份与回退 SQL 放入 Git 忽略的 .private/db-backups。默认旧库 easychat、新库 wetalk；不改变账号授权。若原数据库账号只授权 easychat.*，须由管理员重新授予 wetalk 的相应最小权限。
-
-对已初始化的 MySQL Docker 数据目录，仅修改 MYSQL_DATABASE 环境变量不会更名数据库；不要删除数据目录来重跑初始化。新部署则由 compose.infra.yaml 创建 wetalk 并导入空表结构。截至 2026-09-28，NAS 内网部署已完成：后端镜像 `wetalk-backend:0.0.3` 已启动，readiness 返回 `UP`；保留了原有 MySQL/Redis 容器与数据卷，数据库逻辑备份后应用 SQL 002/003 迁移。后端宿主机端口为回环绑定的 15050/15051，网页经共享 `wetalk-net` 同源代理访问。双账号注册登录、WebSocket、联系人申请、私聊、幂等重试、历史、type 17 已读回执及一个临时文本附件的 NAS 上传/下载字节校验均通过；临时数据和文件已清理。数据库逻辑备份已在隔离 MySQL 容器中恢复并重新应用迁移，字段/索引读回通过。附件持久化目录已有 2 个真实文件（约 3.1 MiB）；NAS 归档后恢复至隔离目录，文件数、相对路径和汇总 SHA-256 一致，原目录未改动；已保留权限为 600 的验证归档并清理隔离恢复副本。Web/后端镜像回滚演练也已通过。0.0.3 已部署且 readiness 返回 UP；DeepSeek API smoke test 返回 HTTP 200。QQ SMTP 已通过 TLS、AUTH 并接受发往配置邮箱的测试邮件；私有 `.env` 中已启用邮箱注册、关闭邮件调试并保持权限 600，后端重建后 readiness 为 UP。收件箱确认与邮箱验证码注册全链路仍待完成；HTTPS/WSS 和实体手机验收仍待完成。
-
-### 邮箱验证码 NAS 验收（2026-09-28）
-
-本机执行 `mvn -B -ntp clean verify`，101 项测试通过后才进行 NAS 验证。NAS 上真实 `POST /api/account/registerEmailCode` 返回 HTTP 200、业务码 200，Java 邮件发送调用成功返回；首次诊断时用过一次性 JSON 序列化 CAPTCHA 键并确认请求后已删除。之后又从 NAS 实际注册页加载并正常解答真实图片验证码，再调用同一接口，仍返回 HTTP 200/业务码 200，未改写或绕过验证码。接口成功说明后端邮件发送调用返回成功，不代表收件箱到达，也没有创建测试账号；完整注册链路仍待验收。SMTP 口令和邮件调试信息均未写入 Git。
-
-用户随后确认收件箱已收到验证码。按用户要求进行 Redis 只读比对时，该键已超过 10 分钟 TTL 并过期；没有读取或记录验证码明文，也未创建测试账号。
-
-## 本地构建与测试
-
-~~~shell
-mvn clean verify
+```sh
+mvn -B -ntp clean verify
 java -jar target/wetalk.jar
-~~~
+```
 
-构建产物为 target/wetalk.jar（可执行 Spring Boot JAR）。不需要在构建机连接真实 MySQL/Redis：现有测试使用隔离替身和 Spring 小范围上下文，覆盖附件权限、参数校验、会话撤销、连接生命周期、启动失败和 AI 禁用配置。
+默认 HTTP 地址为 `http://127.0.0.1:5050/api`，WebSocket 地址为 `ws://127.0.0.1:5051/ws`。启动依赖 MySQL 和 Redis；AI 关闭时不需要 API Key。邮件默认关闭，此时已有账号可登录，但注册邮箱验证码服务不可用。
 
-~~~shell
-python scripts/package_release.py
-~~~
+```sh
+curl --fail http://127.0.0.1:5050/api/actuator/health/readiness
+```
 
-这会生成 dist/wetalk-backend-0.0.3-nas.zip 和对应 SHA256。它包含 JAR、Docker 构建文件、Compose、环境模板、文档、测试统计和内部文件校验清单；不包含真实 .env、数据目录、Git 历史或数据库备份。
+就绪检查同时检查应用、数据库、Redis 和 WebSocket 绑定状态；健康接口不公开内部详情。`UP` 只表示服务就绪，不能替代注册、聊天或文件收发验收。
 
-## 环境变量
+## 运行配置
 
-Spring Boot 不会自动读取本地 .env；本地直接运行 Java 时要由终端导出环境变量，Docker Compose 才会通过 env_file 读取它。
+配置来源为 [application.yml](src/main/resources/application.yml)；`docker` profile 的文件目录默认为 `/data/wetalk/`。下表列出主要变量，真实凭据仅放在私有运行环境中。
 
-| 变量 | 默认/要求 |
+| 变量 | 默认值与用途 |
 |---|---|
-| DB_URL | 默认 localhost:3306/wetalk；NAS 上必须填真实 JDBC 地址 |
-| DB_USERNAME / DB_PASSWORD | 专用数据库账号和密码；默认 wetalk / 空密码只作本地占位 |
-| DB_POOL_SIZE | 10 |
-| REDIS_HOST / REDIS_PORT | 127.0.0.1 / 6379；容器内 localhost 指容器本身 |
-| REDIS_DATABASE | 0；复用现有 Redis 时选择合适的数据库，避免与其他 WeTalk 实例共用键 |
-| REDIS_USERNAME / REDIS_PASSWORD | 可选 ACL 用户和 Redis 密码 |
-| REDIS_SSL | false；启用时 Spring 和 Redisson 都使用 TLS |
-| PROJECT_FOLDER | 本地 ./data/；Docker /data/wetalk/ |
-| WETALK_WEB_AUTH_COOKIE_SECURE | false 本地开发；HTTPS 部署必须设为 true，启用 HttpOnly/SameSite Strict 的 Web 会话 Cookie |
-| WETALK_WEB_ALLOWED_ORIGINS | 本地默认允许 localhost:5173 和 127.0.0.1:5173；NAS 内网同源 HTTP 设为 `http://<NAS_LAN_IP>:<WEB_PUBLISHED_PORT>`；HTTPS 部署设为网页实际 Origin |
-| HTTP_PORT / WS_PORT | 5050 / 5051；Compose 固定内部端口 |
-| BACKEND_BIND_IP | 后端宿主机端口的绑定地址，默认 127.0.0.1；同源 NAS Web 容器通过 `wetalk-net` 内网访问，不需把 API/WS 直接开放到局域网 |
-| ADMIN_EMAILS | 默认为空；可信的现有管理员邮箱，以逗号分隔 |
-| MAX_UPLOAD_SIZE | 500MB，HTTP 与文件请求上限 |
-| SPRING_PROFILES_ACTIVE | dev；Compose 设为 docker |
-| WETALK_AI_ENABLED | false |
-| WETALK_AI_MODEL | none；启用 AI 时设 openai |
-| OPENAI_BASE_URL / OPENAI_MODEL / DEEPSEEK_API_KEY | AI 启用时按提供商填写；DeepSeek 使用 `https://api.deepseek.com`、`deepseek-flash` 和私有运行环境中的 API Key；兼容旧变量 `OPENAI_API_KEY` |
-| WETALK_EMAIL_ENABLED | `false`；设置 `true` 启用注册邮箱验证码 |
-| MAIL_HOST / MAIL_PORT / MAIL_USERNAME / MAIL_PASSWORD / MAIL_PROTOCOL | SMTP 配置；QQ 邮箱使用 `smtp.qq.com`、`465`、`smtps`，账号口令只放入私有 `.env` |
-| MAIL_DEBUG | `false`；保持关闭，避免邮件认证信息和内容进入日志 |
-| MAIL_CONNECTION_TIMEOUT / MAIL_READ_TIMEOUT / MAIL_WRITE_TIMEOUT | SMTP/SMTPS 连接、读取和写入超时，单位毫秒；默认 5000 / 10000 / 10000，避免邮件提供方无响应时请求长期挂起 |
+| `DB_URL` | 本机 MySQL `3306/wetalk`；使用实际 JDBC 地址 |
+| `DB_USERNAME` / `DB_PASSWORD` | `wetalk` / 空值；配置专用账号及密码 |
+| `DB_POOL_SIZE` | `10` |
+| `REDIS_HOST` / `REDIS_PORT` / `REDIS_DATABASE` | `127.0.0.1` / `6379` / `0` |
+| `REDIS_USERNAME` / `REDIS_PASSWORD` / `REDIS_SSL` | 可选 ACL 用户、密码；TLS 默认 `false` |
+| `PROJECT_FOLDER` | `./data/`；使用可写目录并保留末尾 `/` |
+| `HTTP_PORT` / `WS_PORT` | `5050` / `5051` |
+| `SPRING_PROFILES_ACTIVE` | `dev`；Compose 使用 `docker` |
+| `ADMIN_EMAILS` | 空；仅填写已核实身份的现有管理员邮箱，逗号分隔 |
+| `MAX_UPLOAD_SIZE` | `500MB`；同时限制单文件和整个 multipart 请求 |
+| `WETALK_WEB_ALLOWED_ORIGINS` | 本地允许 `http://localhost:5173`、`http://127.0.0.1:5173`；部署时换成实际网页 Origin |
+| `WETALK_WEB_AUTH_COOKIE_SECURE` | `false`；HTTPS 部署设为 `true` |
+| `WETALK_EMAIL_ENABLED` | `false`；注册需启用并配置 SMTP |
+| `MAIL_HOST` / `MAIL_PORT` / `MAIL_PROTOCOL` | `smtp.qq.com` / `465` / `smtps` |
+| `MAIL_USERNAME` / `MAIL_PASSWORD` | 空；发件账号和 SMTP 凭据 |
+| `MAIL_DEBUG` | `false`；保持关闭，避免邮件信息进入调试日志 |
+| `MAIL_CONNECTION_TIMEOUT` / `MAIL_READ_TIMEOUT` / `MAIL_WRITE_TIMEOUT` | `5000` / `10000` / `10000` 毫秒，同时适用于 SMTP 与 SMTPS |
+| `WETALK_AI_ENABLED` / `WETALK_AI_MODEL` | `false` / `none`；启用文字 AI 时改为 `true` / `openai` |
+| `OPENAI_BASE_URL` / `OPENAI_MODEL` | 默认 `https://api.deepseek.com` / `deepseek-flash`；按提供方实际能力配置 |
+| `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` | 前者优先，后者兼容；AI 关闭时可留空 |
 
-启用 AI 需同时设置 WETALK_AI_ENABLED=true 和 WETALK_AI_MODEL=openai，再填写 model、base URL、API Key。DeepSeek 当前 OpenAI 兼容配置为 `https://api.deepseek.com` 和 `deepseek-flash`。普通聊天部署保持 false/none。此行为通过 Spring AI 自动配置测试验证，不使用伪造 API Key。
+Spring Redis 和 Redisson 使用相同的地址、认证、数据库及 TLS 配置。不同 WeTalk 实例应隔离 Redis 数据库和文件目录。容器中的 `127.0.0.1` 指容器自身；跨容器连接使用网络内服务名。
 
-注册邮件验证码为 6 位数字、10 分钟有效；发送验证码前需通过图片验证码。发送与校验均按邮箱限流；已注册邮箱的发送接口使用一致响应，避免泄露账号是否存在。邮件默认关闭，启用后设置 `WETALK_EMAIL_ENABLED=true` 并提供 `MAIL_*` 环境变量。不要开启 `MAIL_DEBUG`，也不要将真实 SMTP 口令或 DeepSeek API Key 写入 Git。邮件发送失败日志只记录异常类别和根因类别，不记录邮箱、验证码、邮件内容、SMTP 对话或异常消息。
+管理员邮箱不能通过公开注册创建。先通过可信流程建立并核实账号，再配置 `ADMIN_EMAILS`；普通资料接口只接受昵称、性别、签名、地区和好友加入方式。
 
-### 请求频率限制
+## 客户端接入约定
 
-后端使用 Redis Lua 原子计数并为计数器设置过期时间；Redis 键只保存 SHA-256 身份摘要。默认每个规范化邮箱注册最多 5 次/小时、登录和 Web 登录合计 10 次/10 分钟；每个账号申请 WebSocket ticket 最多 60 次/分钟，发送聊天消息最多 120 次/分钟。超限返回业务码 429 和“请求过于频繁”提示；Redis 不可用时相关请求失败关闭。
+API 以 `/api` 为前缀，普通响应字段为 `status`、`code`、`message`、`data`。客户端需检查业务 `code`，不能只判断 HTTP 200；登录失效为 `901`，限流为 `429`。下载与媒体流接口直接返回文件字节。
 
+| 能力 | 当前约定 |
+|---|---|
+| Web 登录 | `POST /api/account/webLogin` 写入 `wetalk_session` HttpOnly、SameSite Strict Cookie |
+| 桌面登录 | `POST /api/account/login`；兼容 token 请求头与原生 WebSocket token 参数 |
+| WebSocket | Web 先调用 `POST /api/account/webSocketTicket` 获取 60 秒一次性 ticket，再连接 `/ws?ticket=...`；浏览器 Origin 必须在白名单内 |
+| 登录设备 | 每账号最多一个浏览器会话和一个桌面会话；同类新登录撤销旧会话，另一类继续有效 |
+| 会话管理 | `listSessions`、`revokeSession`、`revokeOtherSessions` 均在 `/api/account` 下；退出仅撤销当前会话，改密与管理员强制下线撤销全部会话 |
+| 文字重试 | `POST /api/chat/sendMessage` 可传 UUID `clientMessageId`；同发送者、同内容重试返回原消息，改变目标或内容拒绝 |
+| 历史与已读 | `loadHistory` 按 `beforeMessageId` 游标读取，每页最多 50；`markRead` 单调推进本人游标，私聊 type 17 通知对端，群聊只维护本人未读 |
+| 好友备注 | 最多 40 个 UTF-16 代码单元，仅本人可见；type 18 同步本人设备，见[备注契约](docs/contact-remarks.md) |
+| 附件 | 先创建 type 5 占位，再上传文件；提交后发送 type 6，见[附件契约](docs/attachment-upload.md) |
+| AI | 目标 `Urobot`；14/15/16 分别为初始化、累计全文片段和结束，终态 1/2/3 为完成/停止/失败 |
 
-### 网页 AI 流式回复与停止
+`POST /api/chat/cancelAiMessage` 只允许停止本人发起的回复，保存已生成正文。AI 正文使用 MEDIUMTEXT，会话摘要最多 500 个 Unicode 字符；普通输入仍最多 500 个 UTF-16 代码单元。同账号私聊回显、AI 提问和文件完成事件遵循[多端同步契约](docs/multi-device-message-sync.md)。
 
-AI 默认关闭。启用时设置 `WETALK_AI_ENABLED=true`、`WETALK_AI_MODEL=openai`，并填写 OpenAI 兼容提供方的 base URL、模型名和 API Key。Web 客户端向机器人 `Urobot` 发送问题后，WebSocket 类型 14/15/16 分别表示初始化、累计全文片段和结束；结束状态 1 为完成、2 为停止、3 为提供方失败。
+注册先通过图片验证码请求邮件，邮件中的 6 位验证码有效 10 分钟。默认限流包括：每邮箱邮件发送 3 次/小时、来源地址邮件请求 20 次/小时、注册 5 次/小时、邮件码校验 10 次/10 分钟、登录 10 次/10 分钟、每账号 WebSocket ticket 60 次/分钟、发送消息 120 次/分钟。Redis 不可用时相关限流请求失败关闭。
 
-`POST /api/chat/cancelAiMessage` 接受正整数 `messageId`，只允许停止当前登录用户发起的 AI 回复。停止会取消提供方流并保存已生成文本；提供方错误也会保存已有文本并写入失败状态。服务器重启后遗留的空 AI 占位消息会在用户尝试停止时标为失败，避免永久等待。完整请求契约见 `WeTalkWeb/docs/openapi.web.json`。
+## Docker 与 NAS 部署用法
 
-AI 正文使用 MEDIUMTEXT 保存完整回复，会话列表只保存最多 500 字符的摘要。已有数据库部署此版本前须备份并执行 `sql/005-ai-message-content.sql`；普通用户消息输入限制仍为 500 字符。
-## NAS Docker 部署准备
+以下是待部署环境的操作说明，不表示本轮已经执行。持久化目录保存用户附件、头像及安装包；数据库与文件应一起备份。
 
-### 独立 MySQL / Redis 基础容器
+**复用已有 MySQL/Redis：**复制 `.env.example` 为私有 `.env`，填写连接参数及 `WETALK_DATA_DIR`。Linux 宿主机的数据目录须允许容器 UID/GID `10001:10001` 写入。完成数据库迁移和 JAR 构建后：
 
-compose.infra.yaml 用官方 MySQL 8.4、Redis 7.4 创建两个独立容器，分别名为 wetalk-mysql 和 wetalk-redis。它们共用 wetalk-net 网络，数据保存在该专用目录的 data/mysql 和 data/redis。
+```sh
+docker compose -f compose.yaml config --quiet
+docker compose -f compose.yaml up -d --build
+docker compose -f compose.yaml ps
+```
 
-准备脚本会随机生成独立的 MySQL root 密码、应用数据库密码和 Redis 密码；密码保存在 .env、secrets/ 和 config/redis.conf，不会打印或提交到 Git。MySQL root 限制为本机登录，应用账号 wetalk 仅用于 wetalk 数据库。默认发布地址是 127.0.0.1。NAS 上后端和网页通过 `wetalk-net` 通信，无需把 MySQL/Redis 暴露到局域网；只有远程开发工具确实要直连时，才用 `--bind-ip` 指定 NAS LAN IP。
+[compose.yaml](compose.yaml)默认将宿主机端口绑定到 `127.0.0.1`。可用 `BACKEND_BIND_IP`、`HTTP_PUBLISHED_PORT`、`WS_PUBLISHED_PORT` 调整；容器内部固定使用 5050/5051。`WETALK_DATA_DIR` 默认 `./data`。
 
-~~~shell
-cd /volume2/docker/wetalk
-python3 scripts/prepare_infra.py  # 保持 MySQL/Redis 仅绑定 NAS 本机回环地址
+**全新独立基础服务：**仅在新的部署目录使用 [prepare_infra.py](scripts/prepare_infra.py)。脚本生成随机凭据、`.env`、Redis 配置及数据目录，拒绝覆盖已有配置；不要先复制 `.env.example`。
+
+```sh
+python3 scripts/prepare_infra.py
 sudo chown 999:999 config/redis.conf
-sudo docker compose -f compose.infra.yaml config --quiet
-sudo docker compose -f compose.infra.yaml up -d
-sudo docker compose -f compose.infra.yaml ps
-~~~
+sudo chown 10001:10001 data/backend
+docker compose -f compose.infra.yaml config --quiet
+docker compose -f compose.infra.yaml up -d
+docker compose -f compose.infra.yaml ps
+```
 
-默认 NAS 侧端口为 MySQL 13306、Redis 16379，以避开现有服务；实际启动前仍需核对端口。两者启用认证和持久化，MySQL 首次启动只挂载并导入最新 sql/001-schema.sql，不会自动执行用于已有数据库的 002 及后续升级脚本。不要通过清空 data/mysql 重跑初始化；已有数据目录的升级需专门迁移脚本。
+基础服务使用 MySQL 8.4、Redis 7.4 和 `wetalk-net`，宿主机默认回环端口 13306/16379。生成的后端 `.env` 使用网络内主机名，并将后端发布端口设为 15050/15051。待 MySQL/Redis 健康、配置好邮件与网页 Origin 后，再启动后端：
 
-生成配置拒绝覆盖已有 .env/secrets/config，避免意外轮换凭据。Redis 配置文件必须由容器 UID/GID 999 读取；父目录和 .env 保持私有权限。同一 Docker 网络中的后端使用 `wetalk-mysql:3306` 和 `wetalk-redis:6379`。默认宿主机映射只监听 127.0.0.1；需要远程开发直连时再单独评估 LAN 发布和防火墙。
+```sh
+docker compose -f compose.yaml -f compose.nas.yaml config --quiet
+docker compose -f compose.yaml -f compose.nas.yaml up -d --build
+```
 
-NAS 部署分为基础服务、后端和网页三个容器层：`compose.infra.yaml` 仅用于全新隔离环境的 MySQL/Redis，`compose.yaml` + `compose.nas.yaml` 启动后端，`WeTalkWeb/compose.nas.yaml` 启动静态网页。部署前必须核对 NAS 当前容器、网络、端口、目录和数据库数据；不要在未完成审计与备份前重建或覆盖现有服务。
+MySQL 只在空数据目录首次启动导入最新 `001-schema.sql`。已有库的 002–007 不会自动执行；不能清空数据目录来替代升级。反向代理需同源转发 `/api` 和 `/ws`，启用 WebSocket Upgrade；公网使用 HTTPS/WSS，并设置实际 Origin 和 Secure Cookie。
 
-~~~shell
-sudo docker build -t wetalk-backend:0.0.3 .
-# 后续启动后端时才执行：
-sudo docker compose -f compose.yaml -f compose.nas.yaml up -d
-~~~
+## 验证与发布产物
 
-prepare_infra.py 为后续后端预留 NAS 发布端口 15050/15051，避免碰本机已有 5050/5051 服务；它不会自行启动第三个容器。
+功能基线 `8bc5481` 的既有 Maven `clean verify` 记录为 **196 项通过、0 失败、0 错误、0 跳过**。这属于文档重写前的功能验收，本次纯 Markdown 修改没有重跑整套功能测试。测试源码位于 [src/test/java](src/test/java)，当前单元与组件测试不要求连接真实 MySQL/Redis。
 
-### 单独后端容器
+构建后的后端发布包可由下列命令生成：
 
-以下是后端容器操作说明，本地打包不等于已部署到 NAS。网页静态容器的 Dockerfile、Nginx 同源代理、Compose 配置、备份和回滚步骤见 `WeTalkWeb/docs/nas-docker-deployment.md`。
+```sh
+python scripts/package_release.py
+```
 
-1. 核对 NAS 架构、端口占用、已有 MySQL/Redis 地址、schema 和数据备份。建议独立目录 /volume2/docker/wetalk；这是建议路径，实际需现场核对。
-2. 将发布 ZIP 传到 NAS，解压后核验文件校验和；包内保留 target/wetalk.jar 的相对结构。
-3. 将 .env.example 复制为 .env 并填写真实连接参数。Compose 仅启动 WeTalk，不会改动或新建其他 MySQL、Redis 服务。
-4. 创建持久化文件目录，让容器 UID/GID 10001 有读写权限。
-5. 构建和启动，等待健康检查成功，再验证真实注册、登录、聊天、下载和 WebSocket。
+脚本读取已有 `target/wetalk.jar` 与 Surefire 报告，生成 `dist/wetalk-backend-0.0.3-nas.zip` 及 `.zip.sha256`；包内有 JAR、Compose、Dockerfile、SQL、运维脚本、README/CHANGELOG、`RELEASE.json` 和 `SHA256SUMS`，不含 Docker 镜像、真实 `.env` 或业务数据。专题 `docs/` 当前不打入 ZIP，需要从源码仓库查阅。打包前应保证 JAR 与测试报告来自拟发布源码；脚本本身不重新编译测试。
 
-~~~shell
-cd /volume2/docker/wetalk
-sha256sum -c SHA256SUMS
-cp .env.example .env
-# 编辑 .env，完成 DB/Redis/管理员等配置
-mkdir -p data
-# 使用 NAS 可用的管理员方式设置该专用目录权限
-chown 10001:10001 data
-docker compose config --quiet
-docker compose build
-docker compose up -d
-docker compose ps
-docker compose logs --tail=100 wetalk
-curl -f http://127.0.0.1:5050/api/actuator/health/readiness
-~~~
+部署验收至少包括就绪检查、实际邮箱注册、双端登录与会话撤销、私聊/群聊、幂等重试、未读/已读、附件字节与媒体 Range、备份恢复。生产域名和 HTTPS/WSS 尚未确定，本轮私有 QA 服务已停止，测试证据留在仓库外。
 
-Compose 映射后端 REST/WS 宿主机端口，默认由 `BACKEND_BIND_IP=127.0.0.1` 限定在 NAS 本机；共享 `wetalk-net` 的网页容器仍可通过服务名访问后端，无需向局域网开放 5050/5051。仅需临时直连诊断时才调整后端绑定地址。`HTTP_PUBLISHED_PORT` / `WS_PUBLISHED_PORT` 控制宿主机端口；`WETALK_DATA_DIR` 控制持久化目录，建议采用经确认的绝对路径。容器非 root 运行，根文件系统只读，临时上传写 `/tmp`，正式文件写挂载目录。
+## 文档索引
 
-Dockerfile 使用官方 [Eclipse Temurin](https://hub.docker.com/_/eclipse-temurin) Java 17 JRE 镜像，安装验证码所需字体和健康检查工具。构建需要网络获取基础镜像/系统包；如果 NAS 拉取受阻，可在有 Linux Docker 引擎的机器构建同架构镜像、docker save、校验传输后 docker load。当前发布 ZIP 是构建包，**不是 docker load 可导入的镜像 tar**。
-
-## App / Web 连接 NAS
-
-- Electron App 的 prodDomain 使用 http://NAS地址:5050（不附加 /api），prodWsDomain 使用 ws://NAS地址:5051/ws。当前客户端默认 localhost，部署后需改为真实地址并重新打包；本次没有改 App。
-- 当前 WeTalkWeb 默认相对 /api，WebSocket 使用页面同源 /ws。开发时在 WeTalkWeb/vite.config.ts 将 /api 和 /ws 的代理目标改为 NAS HTTP/WS 地址。
-- Web 的 VITE_API_BASE_URL 可配置 REST 基址，但 WebSocket 同源策略仍需 /ws 代理。生产建议反向代理统一域名，Web 静态页面、API 和 WebSocket 共用 HTTPS/WSS。
-- 本后端没有添加任意 Origin 的全局 CORS 放行；用同源代理即可保留权限边界。
-- Netty WebSocket 会校验浏览器 Origin，允许来源由 WETALK_WEB_ALLOWED_ORIGINS 配置；无 Origin 的原生客户端继续兼容，Origin 为 null 时仅放行旧 token 查询参数，不放行 WebSocket ticket。生产域名确定后应把允许列表设置为该精确 HTTPS Origin。
-- 消息通过 POST /api/chat/sendMessage 发送，通过 WebSocket 接收。历史分页接口为 POST /api/chat/loadHistory，参数 contactId、beforeMessageId、pageSize（1..50）。
-- 同一账号最多同时登录一台 WeTalk 电脑客户端和一个浏览器；同类设备再次登录会替换旧会话。个人资料与安全页可查看会话并撤销其他会话；改密和管理员强制下线会撤销全部会话。
-
-## 部署后必须验证
-
-健康检查只验证依赖和端口，实际业务还须覆盖：
-注册/图片验证码、并行多设备登录、按设备撤销后旧 Cookie 被拒及目标 WebSocket 断开、当前会话保留、退出后复用旧 token 被拒绝、双账号互发消息、重连初始同步、私聊附件第三方下载被拒绝、群解散后其他会话仍在线，以及持久化文件重启后可读。启用 AI 时单独验证真实提供商的流式回答。
-
-## 已知后续工作
-
-- 当前密码协议仍兼容 App/Web 的历史 MD5 登录摘要；升级 BCrypt/Argon2 和邮箱验证必须协调客户端及已有账号迁移。
-- 管理员角色仍按可信邮箱名单配置，后续宜加入数据库角色和邮箱验证。
-- `/api/app/downloadUpdate` 已实现为受登录态保护的本地更新包下载端点；仅允许全量发布或当前账号在灰度名单中的包。外链更新仍由客户端打开 `outerLink`。
-- SQL 初始化不含本机历史数据；MySQL/Redis 容器部署结果和 App/Web 端到端验证需记录实际结果。
+- [更新日志](CHANGELOG.md)：版本历史和功能变化。
+- [数据库初始化与升级](sql/README.md)：001 与 002–007 的适用范围、执行顺序和读回。
+- [附件上传与读取](docs/attachment-upload.md)：占位、权限、配额、重试和 Range。
+- [聊天图片格式](docs/chat-image-compatibility.md)：图片验证与 `.mjpeg` 别名。
+- [私有好友备注](docs/contact-remarks.md)：字段、接口和 type 18。
+- [多端消息同步](docs/multi-device-message-sync.md)：发送/接收视角、文件完成和 AI 事件。
+- [版本发布管理](docs/app-releases.md)：草稿、灰度、全量和并发约束。
