@@ -343,9 +343,9 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         }
 
         ChatSession chatSession = new ChatSession();
-        chatSession.setLastMessage(UserContactTypeEnum.USER != contactTypeEnum
+        chatSession.setLastMessage(sessionPreview(UserContactTypeEnum.USER != contactTypeEnum
                 ? messageContent
-                : userInfoDto.getNickName() + ": " + messageContent);
+                : userInfoDto.getNickName() + ": " + messageContent));
         chatSession.setSessionId(sessionId);
         chatSession.setLastReceiveTime(curTime);
         chatSessionMapper.updateBySessionId(chatSession, sessionId);
@@ -467,7 +467,12 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         } else if (content.isEmpty()) {
             preview = "AI 没有返回文本";
         }
-        return state.robotNickName + ": " + preview;
+        return sessionPreview(state.robotNickName + ": " + preview);
+    }
+
+    private String sessionPreview(String content) {
+        if (content == null || content.codePointCount(0, content.length()) <= 500) return content;
+        return content.substring(0, content.offsetByCodePoints(0, 499)) + "…";
     }
 
     private MessageSendDTO<?> aiEndMessage(AiStreamState state, String content, Integer status) {

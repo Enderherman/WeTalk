@@ -35,7 +35,7 @@ CREATE TABLE `chat_message` (
   `client_message_id` varchar(36) DEFAULT NULL COMMENT '客户端消息幂等键',
   `session_id` varchar(32) NOT NULL COMMENT '会话id',
   `message_type` tinyint(1) NOT NULL COMMENT '消息类型',
-  `message_content` varchar(500) DEFAULT NULL COMMENT '消息内容',
+  `message_content` mediumtext COMMENT '消息内容',
   `send_user_id` varchar(12) DEFAULT NULL COMMENT '发送人id',
   `send_user_nick_name` varchar(40) DEFAULT NULL COMMENT '发送人昵称',
   `send_time` bigint DEFAULT NULL COMMENT '发送时间',

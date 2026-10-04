@@ -136,6 +136,8 @@ Spring Boot 不会自动读取本地 .env；本地直接运行 Java 时要由终
 AI 默认关闭。启用时设置 `WETALK_AI_ENABLED=true`、`WETALK_AI_MODEL=openai`，并填写 OpenAI 兼容提供方的 base URL、模型名和 API Key。Web 客户端向机器人 `Urobot` 发送问题后，WebSocket 类型 14/15/16 分别表示初始化、累计全文片段和结束；结束状态 1 为完成、2 为停止、3 为提供方失败。
 
 `POST /api/chat/cancelAiMessage` 接受正整数 `messageId`，只允许停止当前登录用户发起的 AI 回复。停止会取消提供方流并保存已生成文本；提供方错误也会保存已有文本并写入失败状态。服务器重启后遗留的空 AI 占位消息会在用户尝试停止时标为失败，避免永久等待。完整请求契约见 `WeTalkWeb/docs/openapi.web.json`。
+
+AI 正文使用 MEDIUMTEXT 保存完整回复，会话列表只保存最多 500 字符的摘要。已有数据库部署此版本前须备份并执行 `sql/005-ai-message-content.sql`；普通用户消息输入限制仍为 500 字符。
 ## NAS Docker 部署准备
 
 ### 独立 MySQL / Redis 基础容器

@@ -39,6 +39,7 @@ files = {
                  "sql/002-client-message-idempotency.sql",
                  "sql/003-persistent-unread-cursor.sql",
                  "sql/004-session-contact-name.sql",
+                 "sql/005-ai-message-content.sql",
                  "sql/README.md", "scripts/prepare_infra.py",
                  "scripts/export_schema.py", "scripts/rename_database.py",
                  ".env.example", "README.md", "CHANGELOG.md")
