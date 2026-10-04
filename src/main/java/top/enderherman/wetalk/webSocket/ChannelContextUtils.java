@@ -216,6 +216,24 @@ public class ChannelContextUtils {
     private void sendToUser(MessageSendDTO<?> messageSendDTO) {
         String contactId = messageSendDTO.getContactId();
         sendMessage(messageSendDTO, contactId);
+        Integer type = messageSendDTO.getMessageType();
+        String senderId = messageSendDTO.getSendUserId();
+        boolean mirrorToSender = MessageTypeEnum.CHAT.getType().equals(type)
+                || MessageTypeEnum.MEDIA_CHAT.getType().equals(type)
+                || MessageTypeEnum.FILE_UPLOAD.getType().equals(type);
+        if (mirrorToSender && !StringUtils.isEmpty(senderId) && !senderId.equals(contactId)
+                && USER_CONTEXT_MAP.containsKey(senderId)) {
+            // 发送者的另一端仍将收件人视为联系人，不能套用接收方的视角转换。
+            MessageSendDTO<?> senderView = top.enderherman.wetalk.utils.CopyUtils.copy(messageSendDTO, MessageSendDTO.class);
+            if (StringUtils.isEmpty(senderView.getContactName())) {
+                ChatSessionUser ownSession = chatSessionUserMapper.selectByUserIdAndContactId(senderId, contactId);
+                if (ownSession != null && !StringUtils.isEmpty(ownSession.getContactName())) {
+                    senderView.setContactName(ownSession.getContactName());
+                }
+            }
+            // 只取真实会话名称，私有备注不进入其他账号共享的 DTO。
+            sendMessage(senderView, senderId, false);
+        }
         //强制下线
         if (MessageTypeEnum.FORCE_OFF_LINE.getType().equals(messageSendDTO.getMessageType())) {
             // 关闭通道
@@ -289,13 +307,18 @@ public class ChannelContextUtils {
      * 发送消息
      */
     public void sendMessage(MessageSendDTO<?> messageSendDTO, String receiveId) {
+        sendMessage(messageSendDTO, receiveId, true);
+    }
+
+    private void sendMessage(MessageSendDTO<?> messageSendDTO, String receiveId, boolean receiverPerspective) {
         if (receiveId == null) {
             return;
         }
         ConcurrentHashMap<String, Channel> userChannels = USER_CONTEXT_MAP.get(receiveId);
         if (userChannels == null || userChannels.isEmpty()) return;
+        String payload = JSONUtil.toJsonStr(receiverPerspective ? prepareMessage(messageSendDTO) : messageSendDTO);
         for (Channel channel : userChannels.values()) {
-            channel.writeAndFlush(new TextWebSocketFrame(JSONUtil.toJsonStr(prepareMessage(messageSendDTO))));
+            channel.writeAndFlush(new TextWebSocketFrame(payload));
         }
     }
 

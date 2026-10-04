@@ -370,6 +370,9 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         MessageSendDTO<?> messageSendDTO = CopyUtils.copy(chatMessage, MessageSendDTO.class);
         if (Constants.ROBOT_UID.equals(contactId)) {
             SysSettingDto sysSettingDto = redisComponent.getSysSetting();
+            // 本人的 AI 提问也同步到该账号所有设备，HTTP 与 WS 使用同一消息 ID。
+            messageSendDTO.setContactName(sysSettingDto.getRobotNickName());
+            messageHandler.sendMessage(messageSendDTO);
             TokenUserInfoDto robot = new TokenUserInfoDto();
             robot.setUserId(sysSettingDto.getRobotUid());
             robot.setNickName(sysSettingDto.getRobotNickName());
@@ -622,11 +625,9 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             deleteTemporaryUpload(stagedFile);
             deleteTemporaryUpload(stagedCover);
         }
-        MessageSendDTO<?> messageSendDTO = new MessageSendDTO<>();
-        messageSendDTO.setStatus(MessageStatusEnum.SENT.getStatus());
-        messageSendDTO.setMessageId(messageId);
+        // 完成事件携带最终消息元数据，使发送者/接收者的其他设备都能正确合并。
+        MessageSendDTO<?> messageSendDTO = CopyUtils.copy(chatMessage, MessageSendDTO.class);
         messageSendDTO.setMessageType(MessageTypeEnum.FILE_UPLOAD.getType());
-        messageSendDTO.setContactId(chatMessage.getContactId());
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override public void afterCommit() { messageHandler.sendMessage(messageSendDTO); }
