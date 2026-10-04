@@ -101,7 +101,7 @@ public class Constants {
 
     public static final String REGEX_PASSWORD = "^(?=.*\\d)(?=.*[a-zA-Z])[\\da-zA-Z~!@#$%^&*_]{8,18}$";
 
-    public static final String[] IMAGE_SUFFIX_LIST = new String[]{".jpeg", ".jpg", ".png", ".gif", ".bmp", ".webp"};
+    public static final String[] IMAGE_SUFFIX_LIST = new String[]{".mjpeg", ".jpeg", ".jpg", ".png", ".gif", ".bmp", ".webp"};
 
     public static final String[] VIDEO_SUFFIX_LIST = new String[]{".mp4", ".avi", ".rmvb", ".mkv", ".mov"};
 

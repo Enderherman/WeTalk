@@ -584,7 +584,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             maxBytes = Math.min(maxBytes, Constants.FILE_SIZE_MB * sysSettingDto.getMaxVideoSize());
         }
         if (file.getSize() > maxBytes) throw new BusinessException(ResponseCodeEnum.CODE_600);
-        if (chatMessage.getFileType() == 0) ImageUploadValidator.validate(file, maxBytes);
+        if (chatMessage.getFileType() == 0) ImageUploadValidator.validateChatImage(file, maxBytes);
         ImageUploadValidator.validate(cover, Constants.FILE_SIZE_MB * sysSettingDto.getMaxImageSize());
         String month = DateUtils.format(new Date(chatMessage.getSendTime()), DateTimePatternEnum.YYYY_MM.getPattern());
         Path folder = Path.of(appConfig.getProjectFolder(), Constants.FILE_FOLDER, month);

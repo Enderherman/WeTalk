@@ -152,6 +152,20 @@ class MessageFileUploadSafetyTest {
     }
 
     @Test
+    void mjpegRetainsTheExistingChatImageAliasAndImageQuota() throws Exception {
+        byte[] jpeg = new byte[]{(byte) 0xff, (byte) 0xd8, (byte) 0xff, 0};
+        message.setFileType(0);
+        service.saveMessageFile("Usender", 12, new MockMultipartFile("file", "photo.mjpeg", "video/x-motion-jpeg", jpeg), null);
+        assertArrayEquals(jpeg, Files.readAllBytes(storedFile(".mjpeg")));
+        message.setStatus(0);
+        message.setFileType(2);
+        MockMultipartFile disguised = new MockMultipartFile("file", "large.mjpeg", "image/jpeg", jpeg) {
+            @Override public long getSize() { return 2 * 1024 * 1024; }
+        };
+        assertThrows(BusinessException.class, () -> service.saveMessageFile("Usender", 12, disguised, null));
+    }
+
+    @Test
     void publishesOnlyAfterCommitAndRepeatingIdenticalUploadDoesNotPublishAgain() throws Exception {
         TransactionSynchronizationManager.initSynchronization();
         try {

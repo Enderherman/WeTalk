@@ -17,6 +17,15 @@ public final class ImageUploadValidator {
     }
 
     public static void validate(MultipartFile file, long maxSizeBytes) {
+        validate(file, maxSizeBytes, false);
+    }
+
+    /** Chat has historically exposed .mjpeg as a JPEG image alias; profile and cover formats stay unchanged. */
+    public static void validateChatImage(MultipartFile file, long maxSizeBytes) {
+        validate(file, maxSizeBytes, true);
+    }
+
+    private static void validate(MultipartFile file, long maxSizeBytes, boolean allowMjpeg) {
         if (file == null) return;
         if (maxSizeBytes < 0 || file.isEmpty() || file.getSize() > maxSizeBytes) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
@@ -29,12 +38,16 @@ public final class ImageUploadValidator {
         String expectedType = switch (extension) {
             case "png" -> "image/png";
             case "jpg", "jpeg" -> "image/jpeg";
+            case "mjpeg" -> allowMjpeg ? "image/jpeg" : null;
             case "gif" -> "image/gif";
             case "bmp" -> "image/bmp";
             case "webp" -> "image/webp";
             default -> null;
         };
-        if (expectedType == null || !expectedType.equalsIgnoreCase(contentType)) {
+        boolean legacyMjpegMime = allowMjpeg && "mjpeg".equals(extension)
+                && ("video/x-motion-jpeg".equalsIgnoreCase(contentType) || "image/x-mjpeg".equalsIgnoreCase(contentType)
+                || "video/mjpeg".equalsIgnoreCase(contentType));
+        if (expectedType == null || (!expectedType.equalsIgnoreCase(contentType) && !legacyMjpegMime)) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
         if (!matchesImageSignature(extension, file)) {
@@ -53,7 +66,7 @@ public final class ImageUploadValidator {
             case "png" -> header.length >= 8
                     && (header[0] & 0xff) == 0x89 && header[1] == 'P' && header[2] == 'N' && header[3] == 'G'
                     && header[4] == 0x0d && header[5] == 0x0a && header[6] == 0x1a && header[7] == 0x0a;
-            case "jpg", "jpeg" -> header.length >= 3
+            case "jpg", "jpeg", "mjpeg" -> header.length >= 3
                     && (header[0] & 0xff) == 0xff && (header[1] & 0xff) == 0xd8 && (header[2] & 0xff) == 0xff;
             case "gif" -> header.length >= 6
                     && header[0] == 'G' && header[1] == 'I' && header[2] == 'F' && header[3] == '8'
