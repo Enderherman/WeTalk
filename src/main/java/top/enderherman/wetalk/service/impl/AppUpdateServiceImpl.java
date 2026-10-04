@@ -1,6 +1,7 @@
 package top.enderherman.wetalk.service.impl;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import top.enderherman.wetalk.common.ResponseCodeEnum;
 import top.enderherman.wetalk.config.AppConfig;
@@ -18,11 +19,16 @@ import top.enderherman.wetalk.mappers.AppUpdateMapper;
 import top.enderherman.wetalk.service.AppUpdateService;
 import top.enderherman.wetalk.utils.CopyUtils;
 import top.enderherman.wetalk.utils.StringUtils;
+import top.enderherman.wetalk.utils.AppVersion;
 
 import jakarta.annotation.Resource;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+import java.net.URI;
+import java.util.Locale;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
@@ -173,8 +179,7 @@ public class AppUpdateServiceImpl implements AppUpdateService {
      */
     @Override
     public Integer deleteAppUpdateById(Integer id) {
-
-        AppUpdate dbInfo = appUpdateMapper.selectById(id);
+        AppUpdate dbInfo = requireUpdate(id);
         if (!AppUpdateStatusEnum.INIT.getStatus().equals(dbInfo.getStatus())) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
@@ -186,38 +191,54 @@ public class AppUpdateServiceImpl implements AppUpdateService {
      * 发布或者修改更新
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void saveUpdate(AppUpdate appUpdate, MultipartFile file) throws IOException {
+        AppVersion.validate(appUpdate.getVersion());
+        if (appUpdate.getUpdateDesc() == null || appUpdate.getUpdateDesc().isBlank()
+                || appUpdate.getUpdateDesc().length() > 500) {
+            throw new BusinessException("更新说明不能为空且不能超过 500 个字符");
+        }
         AppUpdateFileTypeEnum fileTypeEnum = AppUpdateFileTypeEnum.getByType(appUpdate.getFileType());
         if (null == fileTypeEnum) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
-
-
+        AppUpdate existing = null;
         if (appUpdate.getId() != null) {
-            AppUpdate dbInfo = appUpdateMapper.selectById(appUpdate.getId());
-            if (!AppUpdateStatusEnum.INIT.getStatus().equals(dbInfo.getStatus())) {
+            existing = requireUpdate(appUpdate.getId());
+            if (!AppUpdateStatusEnum.INIT.getStatus().equals(existing.getStatus())) {
                 throw new BusinessException(ResponseCodeEnum.CODE_600);
             }
         }
 
-        AppUpdateQuery query = new AppUpdateQuery();
-        query.setOrderBy("version desc");
-        query.setSimplePage(new SimplePage(0, 1));
-        List<AppUpdate> list = appUpdateMapper.selectList(query);
-        if (!list.isEmpty()) {
-            AppUpdate latest = list.get(0);
-            long dbVersion = Long.parseLong(latest.getVersion().replace(".", ""));
-            long currentVersion = Long.parseLong(appUpdate.getVersion().replace(".", ""));
-            //新增时
-            if (appUpdate.getId() == null && currentVersion <= dbVersion) {
-                throw new BusinessException("当前版本必须大于历史版本");
-            }
-
-            //修改时
-            if (appUpdate.getId() != null && currentVersion <= dbVersion && !appUpdate.getId().equals(latest.getId())) {
+        for (AppUpdate other : appUpdateMapper.selectList(new AppUpdateQuery())) {
+            if (appUpdate.getId() != null && appUpdate.getId().equals(other.getId())) continue;
+            if (AppVersion.isValid(other.getVersion()) && AppVersion.compare(appUpdate.getVersion(), other.getVersion()) <= 0) {
                 throw new BusinessException("当前版本必须大于历史版本");
             }
         }
+        if (fileTypeEnum == AppUpdateFileTypeEnum.OUTER_LINK) {
+            validateOuterLink(appUpdate.getOuterLink());
+            if (file != null) throw new BusinessException("外链版本不能同时上传安装包");
+        } else {
+            appUpdate.setOuterLink("");
+            if (file == null && (existing == null || !AppUpdateFileTypeEnum.LOCAL.getType().equals(existing.getFileType())
+                    || !Files.isRegularFile(updatePath(existing.getId())))) {
+                throw new BusinessException("请上传 Windows 安装包");
+            }
+            if (file != null && (file.isEmpty() || file.getSize() > 500L * 1024 * 1024
+                    || file.getOriginalFilename() == null
+                    || !file.getOriginalFilename().toLowerCase(Locale.ROOT).endsWith(".exe"))) {
+                throw new BusinessException("安装包须为非空 .exe 文件，最大 500 MiB");
+            }
+        }
+        // Stage uploads before changing the record; a failed transfer keeps any previous package intact.
+        Path staged = null;
+        if (file != null) {
+            Files.createDirectories(updateFolder());
+            staged = Files.createTempFile(updateFolder(), "upload-", ".tmp");
+        }
+        try {
+        if (file != null) file.transferTo(staged);
         //更新数据库
         if (appUpdate.getId() == null) {
             appUpdate.setCreateTime(new Date());
@@ -229,13 +250,9 @@ public class AppUpdateServiceImpl implements AppUpdateService {
             appUpdateMapper.updateById(appUpdate, appUpdate.getId());
         }
 
-        if (file != null) {
-            File folder = new File(appConfig.getProjectFolder() + Constants.FILE_FOLDER + Constants.APP_UPDATE_FILE);
-            if (!folder.exists()) {
-                folder.mkdirs();
-            }
-            String path = folder.getPath();
-            file.transferTo(new File(path + "/" + appUpdate.getId() + Constants.APP_EXE_SUFFIX));
+        if (staged != null) Files.move(staged, updatePath(appUpdate.getId()), StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            if (staged != null) Files.deleteIfExists(staged);
         }
     }
 
@@ -244,15 +261,31 @@ public class AppUpdateServiceImpl implements AppUpdateService {
      */
     @Override
     public void postUpdate(Integer id, Integer status, String grayscaleUid) {
+        AppUpdate existing = requireUpdate(id);
         AppUpdateStatusEnum statusEnum = AppUpdateStatusEnum.getByStatus(status);
         if (null == statusEnum) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
-        if (AppUpdateStatusEnum.GRAYSCALE.equals(statusEnum) && StringUtils.isEmpty(grayscaleUid)) {
-            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        if (AppUpdateStatusEnum.GRAYSCALE.equals(statusEnum)) {
+            if (StringUtils.isEmpty(grayscaleUid)) throw new BusinessException("请填写灰度用户编号");
+            grayscaleUid = Arrays.stream(grayscaleUid.split("[,，\\s]+"))
+                    .filter(value -> !value.isBlank()).distinct().collect(java.util.stream.Collectors.joining(","));
+            if (grayscaleUid.isEmpty() || grayscaleUid.length() > 1000
+                    || Arrays.stream(grayscaleUid.split(",")).anyMatch(value -> !value.matches("U[0-9]{11}"))) {
+                throw new BusinessException("灰度用户编号格式不正确");
+            }
         }
         if (!AppUpdateStatusEnum.GRAYSCALE.equals(statusEnum)) {
             grayscaleUid = "";
+        }
+        if (statusEnum != AppUpdateStatusEnum.INIT) {
+            AppVersion.validate(existing.getVersion());
+            if (AppUpdateFileTypeEnum.LOCAL.getType().equals(existing.getFileType())) {
+                File packageFile = updatePath(id).toFile();
+                if (!packageFile.isFile() || packageFile.length() == 0) throw new BusinessException("安装包不存在或为空，无法发布");
+            } else if (AppUpdateFileTypeEnum.OUTER_LINK.getType().equals(existing.getFileType())) {
+                validateOuterLink(existing.getOuterLink());
+            } else throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
         AppUpdate update = new AppUpdate();
         update.setStatus(status);
@@ -265,20 +298,52 @@ public class AppUpdateServiceImpl implements AppUpdateService {
      */
     @Override
     public AppUpdateVO getLatestUpdate(String version, String uid) {
-        AppUpdate update = appUpdateMapper.selectLatestUpdate(version, uid);
+        AppVersion.validate(version);
+        AppUpdate update = appUpdateMapper.selectVisibleUpdates(uid).stream()
+                .filter(item -> canUserDownload(item, uid) && AppVersion.isValid(item.getVersion()))
+                .filter(item -> AppVersion.compare(item.getVersion(), version) > 0)
+                .max((first, second) -> AppVersion.compare(first.getVersion(), second.getVersion()))
+                .orElse(null);
         if (update == null)
             return null;
         AppUpdateVO vo = CopyUtils.copy(update, AppUpdateVO.class);
         if (AppUpdateFileTypeEnum.LOCAL.getType().equals(update.getFileType())) {
-            File file = new File(appConfig.getProjectFolder() + Constants.FILE_FOLDER + Constants.APP_UPDATE_FILE + update.getId() + Constants.APP_EXE_SUFFIX);
+            File file = updatePath(update.getId()).toFile();
             vo.setSize(file.length());
         } else {
             vo.setSize(0L);
         }
-        vo.setUpdateList(Arrays.asList(update.getUpdateDescArray()));
+        vo.setUpdateList(update.getUpdateDescArray() == null ? List.of() : Arrays.asList(update.getUpdateDescArray()));
         String fileName = Constants.APP_NAME + update.getVersion() + Constants.APP_EXE_SUFFIX;
         vo.setFileName(fileName);
         return vo;
+    }
+
+    private AppUpdate requireUpdate(Integer id) {
+        if (id == null || id <= 0) throw new BusinessException(ResponseCodeEnum.CODE_600);
+        AppUpdate update = appUpdateMapper.selectById(id);
+        if (update == null) throw new BusinessException(ResponseCodeEnum.CODE_404);
+        return update;
+    }
+
+    private Path updateFolder() {
+        return Path.of(appConfig.getProjectFolder(), Constants.FILE_FOLDER, Constants.APP_UPDATE_FILE).toAbsolutePath().normalize();
+    }
+
+    private Path updatePath(Integer id) {
+        return updateFolder().resolve(id + Constants.APP_EXE_SUFFIX);
+    }
+
+    private void validateOuterLink(String value) {
+        try {
+            URI uri = URI.create(value == null ? "" : value);
+            if (value.length() > 200 || uri.getHost() == null || uri.getUserInfo() != null
+                    || !("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))) {
+                throw new IllegalArgumentException();
+            }
+        } catch (IllegalArgumentException | NullPointerException error) {
+            throw new BusinessException("请输入有效的 HTTP 或 HTTPS 外链，最多 200 个字符");
+        }
     }
 
 

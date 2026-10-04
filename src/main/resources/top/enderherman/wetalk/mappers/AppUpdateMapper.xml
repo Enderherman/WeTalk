@@ -377,11 +377,10 @@
         <include refid="base_column_list"/>
         from app_update where id=#{id}
     </select>
-    <select id="selectLatestUpdate" resultMap="base_result_map">
+    <select id="selectVisibleUpdates" resultMap="base_result_map">
         select
         <include refid="base_column_list"/>
-        from app_update where version>#{version} and(status= 2 or(status=1 and FIND_IN_SET(#{uid},grayscale_uid))) order
-        by id desc limit 0,1
+        from app_update where status=2 or (status=1 and FIND_IN_SET(#{uid},grayscale_uid))
     </select>
 
 </mapper>
