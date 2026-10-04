@@ -23,6 +23,7 @@ import top.enderherman.wetalk.service.UserInfoService;
 import top.enderherman.wetalk.utils.ImageUploadValidator;
 
 import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.NotNull;
 import java.io.File;
 import java.io.IOException;
@@ -60,7 +61,8 @@ public class ManageController extends ABaseController {
      */
     @RequestMapping("/updateUserStatus")
     @GlobalInterceptor(checkAdmin = true)
-    public BaseResponse<?> updateUserStatus(@NotNull String userId, @NotNull Integer status) {
+    public BaseResponse<?> updateUserStatus(HttpServletRequest request, @NotNull String userId, @NotNull Integer status) {
+        requireOtherUser(request, userId);
         userInfoService.updateUserStatus(userId, status);
         return getSuccessResponseVO(null);
     }
@@ -70,7 +72,8 @@ public class ManageController extends ABaseController {
      */
     @RequestMapping("/forcedOffOnline")
     @GlobalInterceptor(checkAdmin = true)
-    public BaseResponse<?> forcedOffOnline(@NotNull String userId) {
+    public BaseResponse<?> forcedOffOnline(HttpServletRequest request, @NotNull String userId) {
+        requireOtherUser(request, userId);
         userInfoService.forcedOffOnline(userId);
         return getSuccessResponseVO(null);
     }
@@ -117,6 +120,7 @@ public class ManageController extends ABaseController {
     public BaseResponse<?> saveSystemSetting(SysSettingDto sysSettingDto,
                                              MultipartFile robotAvatarFile,
                                              MultipartFile robotAvatarCoverFile) throws IOException {
+        validateSettings(sysSettingDto);
         ImageUploadValidator.validate(robotAvatarFile);
         ImageUploadValidator.validate(robotAvatarCoverFile);
         sysSettingDto.setRobotUid(Constants.ROBOT_UID);
@@ -132,6 +136,28 @@ public class ManageController extends ABaseController {
         }
         redisComponent.saveSysSetting(sysSettingDto);
         return BaseResponse.success();
+    }
+
+    private void requireOtherUser(HttpServletRequest request, String userId) {
+        if (getTokenUserDto(request).getUserId().equals(userId)) {
+            throw new BusinessException("不能操作当前管理员账号");
+        }
+    }
+
+    private void validateSettings(SysSettingDto settings) {
+        if (settings == null) throw new BusinessException(ResponseCodeEnum.CODE_600);
+        Integer[] quotas = {settings.getMaxGroupCount(), settings.getMaxGroupMemberCount(),
+                settings.getMaxImageSize(), settings.getMaxVideoSize(), settings.getMaxFileSize()};
+        for (Integer quota : quotas) {
+            if (quota == null || quota < 1) throw new BusinessException("系统配额必须是大于 0 的整数");
+        }
+        if (settings.getRobotNickName() == null || settings.getRobotNickName().isBlank()
+                || settings.getRobotNickName().trim().length() > 20
+                || settings.getRobotWelcome() == null || settings.getRobotWelcome().isBlank()
+                || settings.getRobotWelcome().length() > 300) {
+            throw new BusinessException("机器人昵称须为 1 至 20 字符，欢迎语须为 1 至 300 字符");
+        }
+        settings.setRobotNickName(settings.getRobotNickName().trim());
     }
 
 
