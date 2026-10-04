@@ -14,6 +14,13 @@ public final class AppVersion {
         if (!isValid(value)) throw new BusinessException("版本号须为三段数字，且不能超过 10 个字符");
     }
 
+    public static String normalize(String value) {
+        validate(value);
+        return java.util.Arrays.stream(value.split("\\."))
+                .map(part -> Integer.toString(Integer.parseInt(part)))
+                .collect(java.util.stream.Collectors.joining("."));
+    }
+
     public static int compare(String first, String second) {
         validate(first);
         validate(second);

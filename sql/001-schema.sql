@@ -25,8 +25,15 @@ CREATE TABLE `app_update` (
   `grayscale_uid` varchar(1000) DEFAULT NULL COMMENT '灰度uid',
   `file_type` tinyint(1) DEFAULT NULL COMMENT '文件类型 0:本地文件 1:外链',
   `outer_link` varchar(200) DEFAULT NULL COMMENT '外链地址',
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_app_update_version` (`version`)
 ) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='app发布表';
+
+CREATE TABLE `app_release_lock` (
+  `lock_id` tinyint NOT NULL,
+  PRIMARY KEY (`lock_id`)
+) ENGINE=InnoDB COMMENT='版本发布目录的事务互斥锁';
+INSERT INTO `app_release_lock` (`lock_id`) VALUES (1);
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;

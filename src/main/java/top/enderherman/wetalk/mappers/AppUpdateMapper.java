@@ -7,6 +7,14 @@ import org.apache.ibatis.annotations.Param;
  */
 public interface AppUpdateMapper<T,P> extends BaseMapper<T,P> {
 
+    Integer lockReleaseCatalog();
+    java.util.List<T> selectAllForUpdate();
+    T selectByIdForUpdate(@Param("id") Integer id);
+    Integer updateDraftById(@Param("bean") T bean, @Param("id") Integer id);
+    Integer deleteDraftById(@Param("id") Integer id);
+    Integer updatePublicationState(@Param("id") Integer id, @Param("expectedStatus") Integer expectedStatus,
+                                   @Param("status") Integer status, @Param("grayscaleUid") String grayscaleUid);
+
 	/**
 	 * 根据Id更新
 	 */

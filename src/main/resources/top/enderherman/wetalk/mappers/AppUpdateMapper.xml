@@ -3,6 +3,28 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="top.enderherman.wetalk.mappers.AppUpdateMapper">
 
+    <select id="lockReleaseCatalog" resultType="java.lang.Integer">
+        SELECT lock_id FROM app_release_lock WHERE lock_id = 1 FOR UPDATE
+    </select>
+    <select id="selectAllForUpdate" resultMap="base_result_map">
+        SELECT * FROM app_update ORDER BY id FOR UPDATE
+    </select>
+    <select id="selectByIdForUpdate" resultMap="base_result_map">
+        SELECT * FROM app_update WHERE id = #{id} FOR UPDATE
+    </select>
+    <update id="updateDraftById">
+        UPDATE app_update SET version = #{bean.version}, update_desc = #{bean.updateDesc},
+          file_type = #{bean.fileType}, outer_link = #{bean.outerLink}
+        WHERE id = #{id} AND status = 0
+    </update>
+    <delete id="deleteDraftById">
+        DELETE FROM app_update WHERE id = #{id} AND status = 0
+    </delete>
+    <update id="updatePublicationState">
+        UPDATE app_update SET status = #{status}, grayscale_uid = #{grayscaleUid}
+        WHERE id = #{id} AND status = #{expectedStatus}
+    </update>
+
     <!--实体映射-->
     <resultMap id="base_result_map" type="top.enderherman.wetalk.entity.po.AppUpdate">
         <!--id-->

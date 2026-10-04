@@ -37,7 +37,10 @@ class AppReleaseManagementTest {
         config.setProjectFolder(data.toString());
         ReflectionTestUtils.setField(service, "appUpdateMapper", updates);
         ReflectionTestUtils.setField(service, "appConfig", config);
-        when(updates.selectList(any())).thenReturn(List.of());
+        when(updates.lockReleaseCatalog()).thenReturn(1);
+        when(updates.selectAllForUpdate()).thenReturn(List.of());
+        when(updates.updateDraftById(any(), anyInt())).thenReturn(1);
+        when(updates.updatePublicationState(anyInt(), anyInt(), anyInt(), anyString())).thenReturn(1);
         when(updates.insert(any())).thenAnswer(invocation -> {
             ((AppUpdate) invocation.getArgument(0)).setId(10);
             return 1;
@@ -71,10 +74,10 @@ class AppReleaseManagementTest {
 
     @Test
     void createsNewerVersionAcrossMinorRolloverAndRejectsDowngrade() throws Exception {
-        when(updates.selectList(any())).thenReturn(List.of(release(1, "1.9.9", 2, 1)));
+        when(updates.selectAllForUpdate()).thenReturn(List.of(release(1, "1.9.9", 2, 1)));
         service.saveUpdate(release(0, "1.10.0", 0, 1), null);
         verify(updates).insert(argThat(value -> "1.10.0".equals(value.getVersion()) && value.getStatus() == 0));
-        when(updates.selectList(any())).thenReturn(List.of(release(2, "1.10.0", 2, 1)));
+        when(updates.selectAllForUpdate()).thenReturn(List.of(release(2, "1.10.0", 2, 1)));
         assertThrows(BusinessException.class, () -> service.saveUpdate(release(0, "1.9.10", 0, 1), null));
     }
 
@@ -96,10 +99,10 @@ class AppReleaseManagementTest {
         assertThrows(BusinessException.class, () -> service.deleteAppUpdateById(99));
         assertThrows(BusinessException.class, () -> service.postUpdate(99, 2, ""));
         assertThrows(BusinessException.class, () -> service.saveUpdate(release(99, "1.0.0", 0, 1), null));
-        when(updates.selectById(9)).thenReturn(release(9, "1.0.0", 2, 1));
+        when(updates.selectByIdForUpdate(9)).thenReturn(release(9, "1.0.0", 2, 1));
         assertThrows(BusinessException.class, () -> service.saveUpdate(release(9, "1.0.1", 0, 1), null));
         assertThrows(BusinessException.class, () -> service.deleteAppUpdateById(9));
-        verify(updates, never()).deleteById(anyInt());
+        verify(updates, never()).deleteDraftById(anyInt());
     }
 
     @Test
@@ -123,17 +126,17 @@ class AppReleaseManagementTest {
         byte[] bytes = {'M', 'Z', 1, 2};
         service.saveUpdate(release(0, "1.0.0", 0, 0), new MockMultipartFile("file", "WeTalk.exe", "application/octet-stream", bytes));
         assertArrayEquals(bytes, Files.readAllBytes(packagePath(10)));
-        when(updates.selectById(10)).thenReturn(release(10, "1.0.0", 0, 0));
+        when(updates.selectByIdForUpdate(10)).thenReturn(release(10, "1.0.0", 0, 0));
         service.saveUpdate(release(10, "1.0.1", 0, 0), null);
         assertArrayEquals(bytes, Files.readAllBytes(packagePath(10)));
-        verify(updates).updateById(argThat(value -> "1.0.1".equals(value.getVersion())), eq(10));
+        verify(updates).updateDraftById(argThat(value -> "1.0.1".equals(value.getVersion())), eq(10));
     }
 
     @Test
     void failedUploadLeavesExistingPackageAndDatabaseUntouched() throws Exception {
         Files.createDirectories(packagePath(9).getParent());
         Files.writeString(packagePath(9), "original installer");
-        when(updates.selectById(9)).thenReturn(release(9, "1.0.0", 0, 0));
+        when(updates.selectByIdForUpdate(9)).thenReturn(release(9, "1.0.0", 0, 0));
         MockMultipartFile file = new MockMultipartFile("file", "WeTalk.exe", "application/octet-stream", new byte[]{1}) {
             @Override public void transferTo(Path destination) throws IOException {
                 Files.writeString(destination, "partial");
@@ -142,19 +145,74 @@ class AppReleaseManagementTest {
         };
         assertThrows(IOException.class, () -> service.saveUpdate(release(9, "1.0.1", 0, 0), file));
         assertEquals("original installer", Files.readString(packagePath(9)));
-        verify(updates, never()).updateById(any(), anyInt());
+        verify(updates, never()).updateDraftById(any(), anyInt());
         try (var files = Files.list(packagePath(9).getParent())) { assertEquals(1, files.count()); }
     }
 
     @Test
     void publishesOnlyValidArtifactsAndNormalizesGrayUsersAndWithdrawals() {
-        when(updates.selectById(9)).thenReturn(release(9, "1.0.0", 0, 0));
+        when(updates.selectByIdForUpdate(9)).thenReturn(release(9, "1.0.0", 0, 0));
         assertThrows(BusinessException.class, () -> service.postUpdate(9, 2, ""));
         service.postUpdate(9, 0, "U12345678901");
-        verify(updates).updateById(argThat(value -> value.getStatus() == 0 && "".equals(value.getGrayscaleUid())), eq(9));
-        when(updates.selectById(9)).thenReturn(release(9, "1.0.0", 0, 1));
+        verify(updates, never()).updatePublicationState(anyInt(), anyInt(), anyInt(), anyString());
+        when(updates.selectByIdForUpdate(9)).thenReturn(release(9, "1.0.0", 0, 1));
         assertThrows(BusinessException.class, () -> service.postUpdate(9, 1, "U123"));
         service.postUpdate(9, 1, "U12345678901, U98765432109,U12345678901");
-        verify(updates).updateById(argThat(value -> value.getStatus() == 1 && "U12345678901,U98765432109".equals(value.getGrayscaleUid())), eq(9));
+        verify(updates).updatePublicationState(9, 0, 1, "U12345678901,U98765432109");
+    }
+
+    @Test
+    void freshCatalogReadRejectsVersionThatAnEarlierSnapshotWouldAllow() {
+        when(updates.selectList(any())).thenReturn(List.of());
+        when(updates.selectAllForUpdate()).thenReturn(List.of(release(20, "2.0.0", 0, 1)));
+        assertThrows(BusinessException.class, () -> service.saveUpdate(release(0, "1.9.9", 0, 1), null));
+        verify(updates, never()).insert(any());
+    }
+
+    @Test
+    void numericEquivalentVersionCannotBeAddedWithLeadingZeroes() {
+        when(updates.selectAllForUpdate()).thenReturn(List.of(release(20, "1.0.0", 0, 1)));
+        assertThrows(BusinessException.class, () -> service.saveUpdate(release(0, "01.0.0", 0, 1), null));
+        verify(updates, never()).insert(any());
+        assertEquals("1.2.3", AppVersion.normalize("01.02.03"));
+    }
+
+    @Test
+    void aConcurrentlyPublishedDraftCannotBeEditedOrDeleted() {
+        when(updates.selectById(9)).thenReturn(release(9, "1.0.0", 0, 1));
+        when(updates.selectByIdForUpdate(9)).thenReturn(release(9, "1.0.0", 2, 1));
+        assertThrows(BusinessException.class, () -> service.saveUpdate(release(9, "1.0.1", 0, 1), null));
+        assertThrows(BusinessException.class, () -> service.deleteAppUpdateById(9));
+        verify(updates, never()).updateDraftById(any(), anyInt());
+        verify(updates, never()).deleteDraftById(anyInt());
+    }
+
+    @Test
+    void conditionalDraftWriteFailureLeavesOldInstallerIntact() throws Exception {
+        Files.createDirectories(packagePath(9).getParent());
+        Files.writeString(packagePath(9), "original installer");
+        when(updates.selectByIdForUpdate(9)).thenReturn(release(9, "1.0.0", 0, 0));
+        when(updates.updateDraftById(any(), eq(9))).thenReturn(0);
+        var replacement = new MockMultipartFile("file", "new.exe", "application/octet-stream", new byte[]{1, 2, 3});
+        assertThrows(BusinessException.class, () -> service.saveUpdate(release(9, "1.0.1", 0, 0), replacement));
+        assertEquals("original installer", Files.readString(packagePath(9)));
+    }
+
+    @Test
+    void publicationUsesExpectedStateAndRejectsLostUpdate() {
+        when(updates.selectByIdForUpdate(9)).thenReturn(release(9, "1.0.0", 1, 1));
+        when(updates.updatePublicationState(9, 1, 2, "")).thenReturn(0);
+        assertThrows(BusinessException.class, () -> service.postUpdate(9, 2, ""));
+        verify(updates).updatePublicationState(9, 1, 2, "");
+    }
+
+    @Test
+    void missingCatalogLockFailsClosedBeforeAnyReleaseWrite() {
+        when(updates.lockReleaseCatalog()).thenReturn(null);
+        assertThrows(BusinessException.class, () -> service.saveUpdate(release(0, "1.0.0", 0, 1), null));
+        assertThrows(BusinessException.class, () -> service.postUpdate(9, 2, ""));
+        assertThrows(BusinessException.class, () -> service.deleteAppUpdateById(9));
+        verify(updates, never()).insert(any());
+        verify(updates, never()).updatePublicationState(anyInt(), anyInt(), anyInt(), anyString());
     }
 }

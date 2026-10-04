@@ -178,13 +178,17 @@ public class AppUpdateServiceImpl implements AppUpdateService {
      * 根据Id删除
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Integer deleteAppUpdateById(Integer id) {
-        AppUpdate dbInfo = requireUpdate(id);
+        lockReleaseCatalog();
+        AppUpdate dbInfo = requireUpdateForUpdate(id);
         if (!AppUpdateStatusEnum.INIT.getStatus().equals(dbInfo.getStatus())) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
 
-        return this.appUpdateMapper.deleteById(id);
+        Integer removed = appUpdateMapper.deleteDraftById(id);
+        if (removed == null || removed != 1) throw new BusinessException("版本状态已变化，请刷新后重试");
+        return removed;
     }
 
     /**
@@ -193,7 +197,7 @@ public class AppUpdateServiceImpl implements AppUpdateService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void saveUpdate(AppUpdate appUpdate, MultipartFile file) throws IOException {
-        AppVersion.validate(appUpdate.getVersion());
+        appUpdate.setVersion(AppVersion.normalize(appUpdate.getVersion()));
         if (appUpdate.getUpdateDesc() == null || appUpdate.getUpdateDesc().isBlank()
                 || appUpdate.getUpdateDesc().length() > 500) {
             throw new BusinessException("更新说明不能为空且不能超过 500 个字符");
@@ -202,15 +206,16 @@ public class AppUpdateServiceImpl implements AppUpdateService {
         if (null == fileTypeEnum) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
+        lockReleaseCatalog();
         AppUpdate existing = null;
         if (appUpdate.getId() != null) {
-            existing = requireUpdate(appUpdate.getId());
+            existing = requireUpdateForUpdate(appUpdate.getId());
             if (!AppUpdateStatusEnum.INIT.getStatus().equals(existing.getStatus())) {
                 throw new BusinessException(ResponseCodeEnum.CODE_600);
             }
         }
 
-        for (AppUpdate other : appUpdateMapper.selectList(new AppUpdateQuery())) {
+        for (AppUpdate other : appUpdateMapper.selectAllForUpdate()) {
             if (appUpdate.getId() != null && appUpdate.getId().equals(other.getId())) continue;
             if (AppVersion.isValid(other.getVersion()) && AppVersion.compare(appUpdate.getVersion(), other.getVersion()) <= 0) {
                 throw new BusinessException("当前版本必须大于历史版本");
@@ -247,7 +252,14 @@ public class AppUpdateServiceImpl implements AppUpdateService {
         } else {
             appUpdate.setStatus(null);
             appUpdate.setGrayscaleUid(null);
-            appUpdateMapper.updateById(appUpdate, appUpdate.getId());
+            boolean unchanged = java.util.Objects.equals(existing.getVersion(), appUpdate.getVersion())
+                    && java.util.Objects.equals(existing.getUpdateDesc(), appUpdate.getUpdateDesc())
+                    && java.util.Objects.equals(existing.getFileType(), appUpdate.getFileType())
+                    && java.util.Objects.equals(existing.getOuterLink(), appUpdate.getOuterLink());
+            if (!unchanged) {
+                Integer changed = appUpdateMapper.updateDraftById(appUpdate, appUpdate.getId());
+                if (changed == null || changed != 1) throw new BusinessException("版本状态已变化，请刷新后重试");
+            }
         }
 
         if (staged != null) Files.move(staged, updatePath(appUpdate.getId()), StandardCopyOption.REPLACE_EXISTING);
@@ -260,8 +272,10 @@ public class AppUpdateServiceImpl implements AppUpdateService {
      * 发布更新
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void postUpdate(Integer id, Integer status, String grayscaleUid) {
-        AppUpdate existing = requireUpdate(id);
+        lockReleaseCatalog();
+        AppUpdate existing = requireUpdateForUpdate(id);
         AppUpdateStatusEnum statusEnum = AppUpdateStatusEnum.getByStatus(status);
         if (null == statusEnum) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
@@ -287,10 +301,10 @@ public class AppUpdateServiceImpl implements AppUpdateService {
                 validateOuterLink(existing.getOuterLink());
             } else throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
-        AppUpdate update = new AppUpdate();
-        update.setStatus(status);
-        update.setGrayscaleUid(grayscaleUid);
-        appUpdateMapper.updateById(update, id);
+        if (status.equals(existing.getStatus())
+                && grayscaleUid.equals(existing.getGrayscaleUid() == null ? "" : existing.getGrayscaleUid())) return;
+        Integer changed = appUpdateMapper.updatePublicationState(id, existing.getStatus(), status, grayscaleUid);
+        if (changed == null || changed != 1) throw new BusinessException("版本状态已变化，请刷新后重试");
     }
 
     /**
@@ -319,9 +333,15 @@ public class AppUpdateServiceImpl implements AppUpdateService {
         return vo;
     }
 
-    private AppUpdate requireUpdate(Integer id) {
+    private void lockReleaseCatalog() {
+        if (!Integer.valueOf(1).equals(appUpdateMapper.lockReleaseCatalog())) {
+            throw new BusinessException("版本发布数据尚未初始化");
+        }
+    }
+
+    private AppUpdate requireUpdateForUpdate(Integer id) {
         if (id == null || id <= 0) throw new BusinessException(ResponseCodeEnum.CODE_600);
-        AppUpdate update = appUpdateMapper.selectById(id);
+        AppUpdate update = appUpdateMapper.selectByIdForUpdate(id);
         if (update == null) throw new BusinessException(ResponseCodeEnum.CODE_404);
         return update;
     }

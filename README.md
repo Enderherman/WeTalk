@@ -54,7 +54,7 @@ WeTalk 是 App 和 Web 共用的 Java 17 / Spring Boot 聊天服务。后端提�
 - 可写的文件目录，重启容器时必须保留。
 - AI 使用 OpenAI 兼容接口时，还需要相应 provider/model/API Key。
 
-sql/001-schema.sql 已从本机实际使用的 MySQL 8.0.31 wetalk 导出，包含 9 张业务表的字段、索引和字符集，不含用户、密码摘要、聊天记录等私有数据。它只用于空数据库初始化，不是已有数据库升级脚本；参见 [SQL 说明](sql/README.md)。演示账号和管理员账号另行创建，旧数据库/文件的数据迁移需单独备份处理。
+sql/001-schema.sql 基于本机 MySQL 8.0.31 wetalk 导出的 9 张业务表维护，目前另含发布事务锁表 app_release_lock 和固定锁行，共 10 张表；不含用户、密码摘要、聊天记录等私有数据。它只用于空数据库初始化，不是已有数据库升级脚本；参见 [SQL 说明](sql/README.md)。演示账号和管理员账号另行创建，旧数据库/文件的数据迁移需单独备份处理。
 
 本项目没有 Maven Wrapper，下面使用安装好的 mvn。
 
