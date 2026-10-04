@@ -50,6 +50,7 @@ class GroupSessionLifecycleTest {
     void leavingOrBeingRemovedDropsOnlyThatUsersGroupSession() {
         GroupInfo group = new GroupInfo();
         group.setGroupId("G300");
+        group.setStatus(1);
         group.setGroupOwnId("U100");
         when(groupInfoMapper.selectByGroupId("G300")).thenReturn(group);
         when(userContactMapper.deleteByUserIdAndContactId("U200", "G300")).thenReturn(1);
@@ -67,6 +68,7 @@ class GroupSessionLifecycleTest {
     void dissolvingGroupDropsEveryActiveGroupSession() {
         GroupInfo group = new GroupInfo();
         group.setGroupId("G300");
+        group.setStatus(1);
         group.setGroupOwnId("U100");
         when(groupInfoMapper.selectByGroupId("G300")).thenReturn(group);
         when(userContactMapper.selectList(any(UserContactQuery.class))).thenReturn(java.util.List.of());

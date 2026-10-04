@@ -93,7 +93,7 @@
         <if test="query.queryGroupInfo">
             ,g.group_name as contactName
             <if test="query.queryMemberCount">
-                ,(SELECT COUNT(1) FROM user_contact uc WHERE uc.contact_id = g.group_id ) as memberCount
+                ,(SELECT COUNT(1) FROM user_contact uc WHERE uc.contact_id = g.group_id AND uc.status = 1) as memberCount
             </if>
         </if>
 

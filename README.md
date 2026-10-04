@@ -11,9 +11,9 @@ WeTalk 是 App 和 Web 共用的 Java 17 / Spring Boot 聊天服务。后端提�
 | 就绪检查 | GET /api/actuator/health/readiness |
 | 健康检查 | GET /api/actuator/health |
 | 登录态 | Web 使用 HttpOnly Cookie；Electron 兼容 token 请求头；失败业务码 901 |
-| 头像/封面图片 | 用户资料和机器人头像接受 PNG、JPEG、GIF、BMP、WebP；扩展名、MIME 与文件签名需匹配，每个文件最多 10 MiB |
+| 头像/封面图片 | 用户资料、群资料和机器人头像接受 PNG、JPEG、GIF、BMP、WebP；扩展名、MIME 与文件签名需匹配，每个文件最多 10 MiB |
 | 返回值 | status、code、message、data；客户端按业务 code 判断结果 |
-| 账号注册 | 邮箱、密码、昵称、图片验证码；目前没有邮箱归属验证 |
+| 账号注册 | 图片验证码保护邮件发送；注册须提交邮件中的 6 位验证码，验证邮箱归属 |
 | AI | 默认不启用，无 AI 密钥也能启动普通聊天 |
 
 生产反向代理应使用 HTTPS/WSS，并保持 /api、/ws 两个路径；HTTPS 部署设 WETALK_WEB_AUTH_COOKIE_SECURE=true，并将 WETALK_WEB_ALLOWED_ORIGINS 设为实际网页 Origin。健康接口仅返回 UP/DOWN，不公开配置或数据库详情；就绪检查同时检查 MySQL、Redis 和 WebSocket 是否成功绑定。
@@ -33,6 +33,10 @@ WeTalk 是 App 和 Web 共用的 Java 17 / Spring Boot 聊天服务。后端提�
 验证：Maven clean verify 96 项、WeTalkWeb 244 项单测、类型检查和生产构建通过；真实本机后端/MySQL/Redis 验证同类桌面/浏览器重登会撤销旧 token/Cookie 和 WebSocket、保留另一类别会话，并发同类桌面登录也只留一个有效 token，并始终最多一台客户端加一个浏览器。真实双账号验证私聊 type 17 已读回执、重复游标不重复通知及发送方重连恢复对端游标。测试账号、会话和 Redis 限流键已清理。
 
 ## 本次修复
+
+2026-10-04 功能对齐：删除好友后可恢复原关系与会话，保留历史和已读游标；删除操作不会覆盖对方主动拉黑。群主邀请必须满足双向有效好友、账号正常和群未解散，并先校验整批与人数配额；已解散群不占建群名额。群头像/封面新增与个人头像一致的验证。
+
+已有数据库在部署本轮版本前，需备份后执行 `sql/004-session-contact-name.sql`，将会话名称和发送者昵称列扩到 40 字符。该迁移解决合法长昵称/群名的 SQL 截断，初始化 SQL 已同步；本轮只提供脚本，没有执行真实数据库迁移。
 
 详见 [CHANGELOG.md](CHANGELOG.md)。重点修复了私聊附件越权、群解散误断开连接、离线同步时间、过期连接清理、Redis 密码/数据库配置、旧 token 残留和首次部署配置；群成员配额改为读取正确的 `maxGroupMemberCount`。机器人和用户头像/封面上传都会校验格式、文件签名和 10 MiB 上限。同时启用 Jakarta 参数校验，管理员预留邮箱不能经公开注册获得权限，API 返回的用户对象不再含密码摘要。聊天视频可选上传 PNG 首帧封面，后端按系统图片大小配置检查扩展名、MIME 和文件签名，并通过已有的消息成员权限接口读取。文字聊天支持可选 UUID `clientMessageId`，用发送者唯一键安全处理相同内容的重试；INIT 会话列表返回本人未读数和私聊对端的 `peerReadMessageId`；`POST /chat/markRead` 单调推进游标，并在私聊游标前进时通过 WebSocket type 17 通知发送者。群聊只维护本人未读游标，不发送个人已读回执。已有数据库部署新后端前需备份并按顺序手工执行 `sql/002-client-message-idempotency.sql` 和 `sql/003-persistent-unread-cursor.sql`。
 

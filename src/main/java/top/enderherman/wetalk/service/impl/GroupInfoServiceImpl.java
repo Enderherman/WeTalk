@@ -20,6 +20,7 @@ import top.enderherman.wetalk.mappers.*;
 import top.enderherman.wetalk.service.GroupInfoService;
 import top.enderherman.wetalk.service.UserContactService;
 import top.enderherman.wetalk.utils.CopyUtils;
+import top.enderherman.wetalk.utils.ImageUploadValidator;
 import top.enderherman.wetalk.utils.StringUtils;
 import top.enderherman.wetalk.webSocket.ChannelContextUtils;
 import top.enderherman.wetalk.webSocket.MessageHandler;
@@ -29,6 +30,8 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Date;
 import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 
 /**
@@ -186,6 +189,14 @@ public class GroupInfoServiceImpl implements GroupInfoService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void saveGroup(GroupInfo groupInfo, MultipartFile avatarFile, MultipartFile avatarCover) {
+        if (groupInfo.getGroupName() == null || groupInfo.getGroupName().isBlank()
+                || groupInfo.getGroupName().length() > 32
+                || (groupInfo.getGroupNotice() != null && groupInfo.getGroupNotice().length() > 500)
+                || JoinTypeEnum.getByType(groupInfo.getJoinType()) == null) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
+        ImageUploadValidator.validate(avatarFile);
+        ImageUploadValidator.validate(avatarCover);
         Date currentDate = new Date();
         //1.新增
         if (StringUtils.isEmpty(groupInfo.getGroupId())) {
@@ -193,6 +204,7 @@ public class GroupInfoServiceImpl implements GroupInfoService {
             //1.1查询已有群组数量
             GroupInfoQuery query = new GroupInfoQuery();
             query.setGroupOwnId(groupInfo.getGroupOwnId());
+            query.setStatus(GroupStatusEnum.NORMAL.getStatus());
             Integer count = groupInfoMapper.selectCount(query);
             groupInfo.setGroupId(StringUtils.getGroupId());
             SysSettingDto sysSettingDto = redisComponent.getSysSetting();
@@ -263,7 +275,8 @@ public class GroupInfoServiceImpl implements GroupInfoService {
         //2.修改
         else {
             GroupInfo dbInfo = groupInfoMapper.selectByGroupId(groupInfo.getGroupId());
-            if (!dbInfo.getGroupOwnId().equals(groupInfo.getGroupOwnId())) {
+            if (dbInfo == null || !GroupStatusEnum.NORMAL.getStatus().equals(dbInfo.getStatus())
+                    || !dbInfo.getGroupOwnId().equals(groupInfo.getGroupOwnId())) {
                 throw new BusinessException(ResponseCodeEnum.CODE_600);
             }
 
@@ -282,7 +295,7 @@ public class GroupInfoServiceImpl implements GroupInfoService {
         }
 
         //3.群头像处理
-        if (avatarFile == null) {
+        if (avatarFile == null && avatarCover == null) {
             return;
         }
         //3.1头像目录
@@ -294,7 +307,7 @@ public class GroupInfoServiceImpl implements GroupInfoService {
         //3.2头像路径
         String filePath = avatarFolder.getPath() + "/" + groupInfo.getGroupId() + Constants.IMAGE_SUFFIX;
         try {
-            avatarFile.transferTo(new File(filePath));
+            if (avatarFile != null) avatarFile.transferTo(new File(filePath));
             if (avatarCover != null) {
                 avatarCover.transferTo(new File(filePath + Constants.COVER_IMAGE_SUFFIX));
             }
@@ -312,7 +325,7 @@ public class GroupInfoServiceImpl implements GroupInfoService {
     @Transactional(rollbackFor = Exception.class)
     public void leaveGroup(String userId, String groupId, MessageTypeEnum messageTypeEnum) {
         GroupInfo groupInfo = groupInfoMapper.selectByGroupId(groupId);
-        if (groupInfo == null) {
+        if (groupInfo == null || !GroupStatusEnum.NORMAL.getStatus().equals(groupInfo.getStatus())) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
         //创建者不能退群 只能解散
@@ -363,9 +376,11 @@ public class GroupInfoServiceImpl implements GroupInfoService {
      * 解散群聊
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void dissolutionGroup(String groupOwnerId, String groupId) {
         GroupInfo dbInfo = groupInfoMapper.selectByGroupId(groupId);
-        if (dbInfo == null || !dbInfo.getGroupOwnId().equals(groupOwnerId)) {
+        if (dbInfo == null || !GroupStatusEnum.NORMAL.getStatus().equals(dbInfo.getStatus())
+                || !dbInfo.getGroupOwnId().equals(groupOwnerId)) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
 
@@ -425,11 +440,51 @@ public class GroupInfoServiceImpl implements GroupInfoService {
     @Transactional(rollbackFor = Exception.class)
     public void addOrRemoveGroupUser(TokenUserInfoDto tokenUserInfoDto, String groupId, String contactIds, Integer opType) {
         GroupInfo dbInfo = groupInfoMapper.selectByGroupId(groupId);
-        if (dbInfo == null || !dbInfo.getGroupOwnId().equals(tokenUserInfoDto.getUserId())) {
+        if (dbInfo == null || !GroupStatusEnum.NORMAL.getStatus().equals(dbInfo.getStatus())
+                || !dbInfo.getGroupOwnId().equals(tokenUserInfoDto.getUserId())
+                || (!Constants.ZERO.equals(opType) && !Constants.ONE.equals(opType))
+                || contactIds == null || contactIds.isBlank()) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
-        String[] contactIdList = contactIds.split(",");
+        Set<String> contactIdList = new LinkedHashSet<>();
+        for (String value : contactIds.split(",", -1)) {
+            String contactId = value.trim();
+            if (contactId.isBlank() || UserContactTypeEnum.getByPrefix(contactId) != UserContactTypeEnum.USER
+                    || contactId.equals(dbInfo.getGroupOwnId())) throw new BusinessException(ResponseCodeEnum.CODE_600);
+            contactIdList.add(contactId);
+        }
+        // 先验证整批，避免后面的无效用户导致此前已广播的成员变化回滚。
+        int additions = 0;
+        Set<String> changes = new LinkedHashSet<>();
         for (String contactId : contactIdList) {
+            UserContact membership = userContactMapper.selectByUserIdAndContactId(contactId, groupId);
+            boolean member = membership != null && UserContactStatusEnum.FRIEND.getStatus().equals(membership.getStatus());
+            if (Constants.ZERO.equals(opType)) {
+                if (!member) throw new BusinessException(ResponseCodeEnum.CODE_600);
+            } else {
+                UserInfo user = userInfoMapper.selectByUserId(contactId);
+                UserContact friendship = userContactMapper.selectByUserIdAndContactId(tokenUserInfoDto.getUserId(), contactId);
+                UserContact reverse = userContactMapper.selectByUserIdAndContactId(contactId, tokenUserInfoDto.getUserId());
+                if (user == null || !Integer.valueOf(UserStatusEnum.ENABLE.getStatus()).equals(user.getStatus())
+                        || !Integer.valueOf(0).equals(user.getIsDelete())
+                        || friendship == null || !UserContactStatusEnum.FRIEND.getStatus().equals(friendship.getStatus())
+                        || reverse == null || !UserContactStatusEnum.FRIEND.getStatus().equals(reverse.getStatus())) {
+                    throw new BusinessException("只能邀请有效好友加入群聊");
+                }
+                if (member) continue;
+                additions++;
+            }
+            changes.add(contactId);
+        }
+        if (additions > 0) {
+            UserContactQuery members = new UserContactQuery();
+            members.setContactId(groupId);
+            members.setStatus(UserContactStatusEnum.FRIEND.getStatus());
+            if (userContactMapper.selectCount(members) + additions > redisComponent.getSysSetting().getMaxGroupMemberCount()) {
+                throw new BusinessException("成员已满");
+            }
+        }
+        for (String contactId : changes) {
             // 移除群员
             if (Constants.ZERO.equals(opType)) {
                 //启用事务 交给spring管理

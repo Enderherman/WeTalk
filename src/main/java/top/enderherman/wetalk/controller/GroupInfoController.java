@@ -92,6 +92,7 @@ public class GroupInfoController extends ABaseController {
 
         UserContactQuery query = new UserContactQuery();
         query.setContactId(groupId);
+        query.setStatus(UserContactStatusEnum.FRIEND.getStatus());
         Integer memberCount = userContactService.findCountByParam(query);
         groupInfo.setMemberCount(memberCount);
         return getSuccessResponseVO(groupInfo);
