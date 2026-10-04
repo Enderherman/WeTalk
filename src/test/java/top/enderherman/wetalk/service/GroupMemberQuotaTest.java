@@ -50,6 +50,16 @@ class GroupMemberQuotaTest {
         ReflectionTestUtils.setField(service, "redisComponent", redisComponent);
         ReflectionTestUtils.setField(service, "channelContextUtils", mock(ChannelContextUtils.class));
         ReflectionTestUtils.setField(service, "messageHandler", mock(MessageHandler.class));
+        GroupInfo group = new GroupInfo();
+        group.setGroupId("G300");
+        group.setGroupName("Study Group");
+        group.setStatus(1);
+        when(groupInfoMapper.selectByGroupId("G300")).thenReturn(group);
+        UserInfo member = new UserInfo();
+        member.setNickName("Member");
+        member.setStatus(1);
+        member.setIsDelete(0);
+        when(userInfoMapper.selectByUserId("U200")).thenReturn(member);
     }
 
     @Test
@@ -60,17 +70,9 @@ class GroupMemberQuotaTest {
         when(redisComponent.getSysSetting()).thenReturn(settings);
         when(userContactMapper.selectCount(any(UserContactQuery.class))).thenReturn(2, 3);
 
-        GroupInfo group = new GroupInfo();
-        group.setGroupId("G300");
-        group.setGroupName("Study Group");
-        when(groupInfoMapper.selectByGroupId("G300")).thenReturn(group);
-        UserInfo member = new UserInfo();
-        member.setNickName("Member");
-        when(userInfoMapper.selectByUserId("U200")).thenReturn(member);
-
         service.addContact("U200", null, "G300", UserContactTypeEnum.GROUP.getType(), "joined the group");
 
-        verify(userContactMapper).insertBatch(any());
+        verify(userContactMapper).insertOrUpdateBatch(any());
         verify(chatSessionUserMapper).insertOrUpdate(any(ChatSessionUser.class));
     }
 
@@ -85,6 +87,6 @@ class GroupMemberQuotaTest {
         assertThrows(BusinessException.class, () -> service.addContact(
                 "U200", null, "G300", UserContactTypeEnum.GROUP.getType(), "joined the group"));
 
-        verify(userContactMapper, never()).insertBatch(any());
+        verify(userContactMapper, never()).insertOrUpdateBatch(any());
     }
 }

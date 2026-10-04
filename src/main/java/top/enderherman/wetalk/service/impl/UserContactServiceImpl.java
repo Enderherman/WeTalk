@@ -304,6 +304,9 @@ public class UserContactServiceImpl implements UserContactService {
 
         //申请人
         String applyUserId = tokenUserInfoDto.getUserId();
+        if (applyUserId.equals(contactId) || (applyInfo != null && applyInfo.length() > 100)) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
         //默认申请信息
         applyInfo = StringUtils.isEmpty(applyInfo) ?
                 String.format(Constants.APPLY_INFO_TEMPLATE, tokenUserInfoDto.getNickName()) : applyInfo;
@@ -331,11 +334,20 @@ public class UserContactServiceImpl implements UserContactService {
             joinType = groupInfo.getJoinType();
         } else {
             UserInfo userInfo = userInfoMapper.selectByUserId(contactId);
-            if (userInfo == null) {
+            if (!isSearchableUser(userInfo)) {
                 throw new BusinessException("联系人不存在");
+            }
+            UserContact reverse = userContactMapper.selectByUserIdAndContactId(contactId, applyUserId);
+            if (reverse != null && UserContactStatusEnum.BLACKLIST.getStatus().equals(reverse.getStatus())) {
+                throw new BusinessException("对方已将您拉黑");
             }
             joinType = userInfo.getJoinType();
         }
+
+        if (userContact != null && UserContactStatusEnum.FRIEND.getStatus().equals(userContact.getStatus())) {
+            return JoinTypeEnum.PASS.getType();
+        }
+        if (JoinTypeEnum.getByType(joinType) == null) throw new BusinessException(ResponseCodeEnum.CODE_600);
 
         //不需要申请
         if (JoinTypeEnum.PASS.getType().equals(joinType)) {
@@ -378,7 +390,39 @@ public class UserContactServiceImpl implements UserContactService {
      * 添加联系人
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void addContact(String applyUserId, String receiveUserId, String contactId, Integer contactType, String applyInfo) {
+        boolean groupContact = UserContactTypeEnum.GROUP.getType().equals(contactType);
+        if ((!groupContact && !UserContactTypeEnum.USER.getType().equals(contactType))
+                || UserContactTypeEnum.getByPrefix(contactId) != (groupContact ? UserContactTypeEnum.GROUP : UserContactTypeEnum.USER)
+                || applyUserId == null || applyUserId.equals(contactId)) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
+        UserInfo applicant = userInfoMapper.selectByUserId(applyUserId);
+        if (!isSearchableUser(applicant)) throw new BusinessException("联系人不存在或已停用");
+        UserContact existing = userContactMapper.selectByUserIdAndContactId(applyUserId, contactId);
+        if (groupContact) {
+            GroupInfo group = groupInfoMapper.selectByGroupId(contactId);
+            if (group == null || !GroupStatusEnum.NORMAL.getStatus().equals(group.getStatus())
+                    || (receiveUserId != null && !receiveUserId.equals(group.getGroupOwnId()))) {
+                throw new BusinessException("群聊不存在或已解散");
+            }
+            if (existing != null && UserContactStatusEnum.FRIEND.getStatus().equals(existing.getStatus())) return;
+        } else {
+            UserInfo recipient = userInfoMapper.selectByUserId(contactId);
+            if (!contactId.equals(receiveUserId) || !isSearchableUser(recipient)) {
+                throw new BusinessException("联系人不存在或已停用");
+            }
+            UserContact reverse = userContactMapper.selectByUserIdAndContactId(contactId, applyUserId);
+            if ((reverse != null && UserContactStatusEnum.BLACKLIST.getStatus().equals(reverse.getStatus()))
+                    || (existing != null && ArrayUtils.contains(new Integer[]{
+                    UserContactStatusEnum.BLACKLIST_BE.getStatus(), UserContactStatusEnum.BLACKLIST_BE_FIRST.getStatus()}, existing.getStatus()))) {
+                throw new BusinessException("对方已将您拉黑");
+            }
+            if (existing != null && reverse != null
+                    && UserContactStatusEnum.FRIEND.getStatus().equals(existing.getStatus())
+                    && UserContactStatusEnum.FRIEND.getStatus().equals(reverse.getStatus())) return;
+        }
         //群聊人数
         if (UserContactTypeEnum.GROUP.getType().equals(contactType)) {
             UserContactQuery query = new UserContactQuery();
@@ -414,7 +458,7 @@ public class UserContactServiceImpl implements UserContactService {
             contactB.setStatus(UserContactStatusEnum.FRIEND.getStatus());
             contactList.add(contactB);
         }
-        userContactMapper.insertBatch(contactList);
+        userContactMapper.insertOrUpdateBatch(contactList);
         if (UserContactTypeEnum.USER.getType().equals(contactType)) {
             redisComponent.saveContact(receiveUserId, applyUserId);
         }
@@ -453,7 +497,7 @@ public class UserContactServiceImpl implements UserContactService {
             receiveSessionUser.setContactName(applyUser.getNickName());
             chatSessionUserList.add(receiveSessionUser);
 
-            chatSessionUserMapper.insertBatch(chatSessionUserList);
+            chatSessionUserMapper.insertOrUpdateBatch(chatSessionUserList);
 
             //记录消息
             ChatMessage chatMessage = new ChatMessage();
@@ -465,6 +509,7 @@ public class UserContactServiceImpl implements UserContactService {
             chatMessage.setSendTime(curDate.getTime());
             chatMessage.setContactId(contactId);
             chatMessage.setContactType(UserContactTypeEnum.USER.getType());
+            chatMessage.setStatus(MessageStatusEnum.SENT.getStatus());
             chatMessageMapper.insert(chatMessage);
 
             MessageSendDTO messageSendDTO = CopyUtils.copy(chatMessage, MessageSendDTO.class);
@@ -568,6 +613,12 @@ public class UserContactServiceImpl implements UserContactService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void changeContactType(String userId, String contactId, Integer status) {
+        if (UserContactTypeEnum.getByPrefix(contactId) != UserContactTypeEnum.USER
+                || userId.equals(contactId)
+                || (!UserContactStatusEnum.DEL.getStatus().equals(status)
+                && !UserContactStatusEnum.BLACKLIST.getStatus().equals(status))) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
         UserContact contact = userContactMapper.selectByUserIdAndContactId(userId, contactId);
         if (contact == null) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
@@ -586,7 +637,11 @@ public class UserContactServiceImpl implements UserContactService {
             friend.setStatus(UserContactStatusEnum.BLACKLIST_BE.getStatus());
         }
         friend.setUpdateTime(new Date());
-        userContactMapper.updateByUserIdAndContactId(friend, contactId, userId);
+        UserContact reverse = userContactMapper.selectByUserIdAndContactId(contactId, userId);
+        // 对方主动拉黑的决定不能由当前用户的删除/拉黑动作覆盖。
+        if (reverse == null || !UserContactStatusEnum.BLACKLIST.getStatus().equals(reverse.getStatus())) {
+            userContactMapper.updateByUserIdAndContactId(friend, contactId, userId);
+        }
 
 
         redisComponent.removeUserContact(userId, contactId);

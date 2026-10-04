@@ -119,12 +119,13 @@ public class UserContactController extends ABaseController {
     public BaseResponse<?> getContactInfo(HttpServletRequest request, @NotNull String contactId) {
         TokenUserInfoDto tokenUserInfoDto = getTokenUserDto(request);
         UserInfo userInfo = userInfoService.getUserInfoByUserId(contactId);
+        if (userInfo == null) throw new BusinessException(ResponseCodeEnum.CODE_404);
         UserInfoVO userInfoVO = CopyUtils.copy(userInfo, UserInfoVO.class);
         userInfoVO.setContactStatus(UserContactStatusEnum.NOT_FRIEND.getStatus());
 
         UserContact userContact = userContactService.getUserContactByUserIdAndContactId(tokenUserInfoDto.getUserId(), contactId);
         if (userContact != null) {
-            userInfoVO.setContactStatus(UserContactStatusEnum.FRIEND.getStatus());
+            userInfoVO.setContactStatus(userContact.getStatus());
         }
         return getSuccessResponseVO(userInfoVO);
     }
@@ -145,6 +146,7 @@ public class UserContactController extends ABaseController {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
         UserInfo userInfo = userInfoService.getUserInfoByUserId(contactId);
+        if (userInfo == null) throw new BusinessException(ResponseCodeEnum.CODE_404);
         UserInfoVO userInfoVO = CopyUtils.copy(userInfo, UserInfoVO.class);
         return getSuccessResponseVO(userInfoVO);
     }
