@@ -21,7 +21,8 @@ public enum MessageTypeEnum {
     AI_CHAT(14, "", "AI聊天消息初始化"),
     AI_CHAT_STREAM(15, "", "AI聊天流式消息"),
     AI_CHAT_STREAM_END(16, "", "AI聊天流式消息结束"),
-    READ_RECEIPT(17, "", "私聊已读回执");
+    READ_RECEIPT(17, "", "私聊已读回执"),
+    CONTACT_REMARK(18, "", "当前账号的私有好友备注更新");
 
     private final Integer type;
     private final String initMessage;

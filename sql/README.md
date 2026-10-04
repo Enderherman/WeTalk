@@ -14,6 +14,7 @@ app_update、chat_message、chat_session、chat_session_user、group_info、user
 - `003-persistent-unread-cursor.sql` 为每个用户/会话映射保存已读消息游标，并添加未读统计索引；迁移时把既有会话历史标为已读，避免升级后突然出现历史未读数。
 - `004-session-contact-name.sql` 将 `chat_session_user.contact_name` 和 `chat_message.send_user_nick_name` 扩容到 40 字符，与用户昵称上限一致，兼容 32 字符群名。不会修改名称、消息或已读游标；该扩容脚本可重复执行。应用后使用 `SHOW COLUMNS FROM chat_session_user LIKE 'contact_name'` 和 `SHOW COLUMNS FROM chat_message LIKE 'send_user_nick_name'` 确认均为 `varchar(40)`。
 - `005-ai-message-content.sql` 将 `chat_message.message_content` 扩为 MEDIUMTEXT，完整保存长 AI 回复；普通输入限制和会话摘要上限仍为 500 字符。使用 `SHOW COLUMNS FROM chat_message LIKE 'message_content'` 确认类型为 `mediumtext`。
+- `006-private-contact-remark.sql` 为 `user_contact` 增加可空 `remark varchar(40)`，按当前账号与联系人复合主键保存私有备注。使用 `SHOW COLUMNS FROM user_contact LIKE 'remark'` 核对类型；已有库仅执行一次，新库的最新 001 已包含该列。
 - 应先备份数据库，再手工应用迁移并验证列/索引存在，然后部署需要该字段的后端版本。
 
 2026-10-04：004 已随源码提供，本轮没有连接或迁移运行中的数据库；部署验收必须另外记录真实迁移与长昵称收发、长群名创建/修改的结果。

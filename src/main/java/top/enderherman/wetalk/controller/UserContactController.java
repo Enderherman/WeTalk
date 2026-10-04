@@ -3,6 +3,7 @@ package top.enderherman.wetalk.controller;
 import org.apache.commons.lang3.ArrayUtils;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 import top.enderherman.wetalk.annotation.GlobalInterceptor;
 import top.enderherman.wetalk.common.BaseResponse;
@@ -31,6 +32,12 @@ import jakarta.validation.constraints.NotNull;
 @RestController
 @RequestMapping("/contact")
 public class UserContactController extends ABaseController {
+
+    @PostMapping("/saveRemark")
+    @GlobalInterceptor
+    public BaseResponse<?> saveRemark(HttpServletRequest request, @NotNull String contactId, @NotNull String remark) {
+        return getSuccessResponseVO(userContactService.saveRemark(getTokenUserDto(request).getUserId(), contactId, remark));
+    }
 
     @Resource
     private UserContactService userContactService;
@@ -126,6 +133,7 @@ public class UserContactController extends ABaseController {
         UserContact userContact = userContactService.getUserContactByUserIdAndContactId(tokenUserInfoDto.getUserId(), contactId);
         if (userContact != null) {
             userInfoVO.setContactStatus(userContact.getStatus());
+            userInfoVO.setRemark(userContact.getRemark());
         }
         return getSuccessResponseVO(userInfoVO);
     }
@@ -148,6 +156,8 @@ public class UserContactController extends ABaseController {
         UserInfo userInfo = userInfoService.getUserInfoByUserId(contactId);
         if (userInfo == null) throw new BusinessException(ResponseCodeEnum.CODE_404);
         UserInfoVO userInfoVO = CopyUtils.copy(userInfo, UserInfoVO.class);
+        userInfoVO.setContactStatus(userContact.getStatus());
+        userInfoVO.setRemark(userContact.getRemark());
         return getSuccessResponseVO(userInfoVO);
     }
 

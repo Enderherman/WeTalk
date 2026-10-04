@@ -17,12 +17,13 @@
         <result column="status" property="status"/>
         <!--最后更新时间-->
         <result column="update_time" property="updateTime"/>
+        <result column="remark" property="remark"/>
     </resultMap>
 
 
     <!-- 通用查询结果列-->
     <sql id="base_column_list">
-        c.user_id,contact_id,contact_type,c.create_time,c.status,
+        c.user_id,contact_id,contact_type,c.create_time,c.status,c.remark,
 		 update_time
     </sql>
 
@@ -311,6 +312,15 @@
     </delete>
 
     <!-- 根据UserIdAndContactId修改-->
+    <update id="updateRemark">
+        UPDATE user_contact c
+        INNER JOIN user_contact peer ON peer.user_id = c.contact_id AND peer.contact_id = c.user_id
+          AND peer.status = 1 AND peer.contact_type = 0
+        SET c.remark = #{remark}, c.update_time = CURRENT_TIMESTAMP
+        WHERE c.user_id = #{userId} AND c.contact_id = #{contactId}
+          AND c.status = 1 AND c.contact_type = 0
+    </update>
+
     <update id="updateByUserIdAndContactId" parameterType="top.enderherman.wetalk.entity.po.UserContact">
         UPDATE user_contact
         <set>

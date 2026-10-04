@@ -7,12 +7,15 @@ import top.enderherman.wetalk.entity.vo.PaginationResultVO;
 import top.enderherman.wetalk.entity.vo.UserContactSearchResultVO;
 
 import java.util.List;
+import java.util.Map;
 
 
 /**
  * 联系人表 业务接口
  */
 public interface UserContactService {
+
+    Map<String, String> saveRemark(String userId, String contactId, String remark);
 
 	/**
 	 * 根据条件查询列表

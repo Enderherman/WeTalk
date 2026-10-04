@@ -40,6 +40,7 @@ files = {
                  "sql/003-persistent-unread-cursor.sql",
                  "sql/004-session-contact-name.sql",
                  "sql/005-ai-message-content.sql",
+                 "sql/006-private-contact-remark.sql",
                  "sql/README.md", "scripts/prepare_infra.py",
                  "scripts/export_schema.py", "scripts/rename_database.py",
                  ".env.example", "README.md", "CHANGELOG.md")

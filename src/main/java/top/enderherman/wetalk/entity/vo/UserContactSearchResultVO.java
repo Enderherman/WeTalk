@@ -15,6 +15,8 @@ public class UserContactSearchResultVO implements Serializable {
 
     private String nickName;
 
+    private String remark;
+
     private Integer status;
 
     private String statusName;

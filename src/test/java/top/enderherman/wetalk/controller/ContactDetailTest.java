@@ -49,4 +49,34 @@ class ContactDetailTest {
         UserContactController controller = controller(mock(UserInfoService.class), mock(UserContactService.class));
         assertThrows(BusinessException.class, () -> controller.getContactInfo(new MockHttpServletRequest(), "U999"));
     }
+
+    @Test
+    void contactDetailReturnsPrivateRemarkWithoutRenamingTheUser() {
+        UserInfoService users = mock(UserInfoService.class);
+        UserContactService contacts = mock(UserContactService.class);
+        UserInfo user = new UserInfo();
+        user.setUserId("U200");
+        user.setNickName("Real Name");
+        when(users.getUserInfoByUserId("U200")).thenReturn(user);
+        UserContact relationship = new UserContact();
+        relationship.setStatus(1);
+        relationship.setRemark("Private Label");
+        when(contacts.getUserContactByUserIdAndContactId("U100", "U200")).thenReturn(relationship);
+        UserContactController controller = controller(users, contacts);
+        UserInfoVO publicDetail = (UserInfoVO) controller.getContactInfo(new MockHttpServletRequest(), "U200").getData();
+        UserInfoVO friendDetail = (UserInfoVO) controller.getContactUserInfo(new MockHttpServletRequest(), "U200").getData();
+        assertEquals("Private Label", publicDetail.getRemark());
+        assertEquals("Private Label", friendDetail.getRemark());
+        assertEquals("Real Name", friendDetail.getNickName());
+    }
+
+    @Test
+    void remarkUpdateAlwaysUsesAuthenticatedUserIdentity() {
+        UserContactService contacts = mock(UserContactService.class);
+        UserContactController controller = controller(mock(UserInfoService.class), contacts);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setParameter("userId", "U999");
+        controller.saveRemark(request, "U200", "Private Label");
+        verify(contacts).saveRemark("U100", "U200", "Private Label");
+    }
 }

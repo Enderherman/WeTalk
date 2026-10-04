@@ -7,6 +7,9 @@ import org.apache.ibatis.annotations.Param;
  */
 public interface UserContactMapper<T,P> extends BaseMapper<T,P> {
 
+    Integer updateRemark(@Param("userId") String userId, @Param("contactId") String contactId,
+                         @Param("remark") String remark);
+
 	/**
 	 * 根据UserIdAndContactId更新
 	 */

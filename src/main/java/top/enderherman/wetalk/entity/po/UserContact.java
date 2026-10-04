@@ -55,6 +55,12 @@ public class UserContact implements Serializable {
      */
     private String contactName;
 
+    /** 当前用户为该好友设置的私有备注，不替代真实昵称。 */
+    private String remark;
+
+    public String getRemark() { return remark; }
+    public void setRemark(String remark) { this.remark = remark; }
+
     /**
      * 性别
      */

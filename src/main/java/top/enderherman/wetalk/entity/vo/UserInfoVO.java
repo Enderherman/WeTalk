@@ -24,6 +24,8 @@ public class UserInfoVO implements Serializable {
      */
     private String nickName;
 
+    private String remark;
+
     /**
      * 添加好友方式: 0:直接添加,1:同意后添加
      */

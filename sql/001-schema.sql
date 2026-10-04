@@ -95,6 +95,7 @@ CREATE TABLE `user_contact` (
   `user_id` varchar(12) NOT NULL COMMENT '用户id',
   `contact_id` varchar(12) NOT NULL COMMENT '联系人id或者群组id',
   `contact_type` tinyint(1) DEFAULT NULL COMMENT '联系人类型: 0:好友 1:群组',
+  `remark` varchar(40) DEFAULT NULL COMMENT '当前用户的私有好友备注',
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `status` tinyint(1) DEFAULT NULL COMMENT '状态: 0:非好友 1:好友 2:已删除好友 3:被好友删除 4:已拉黑好友 5:被好友拉黑',
   `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',

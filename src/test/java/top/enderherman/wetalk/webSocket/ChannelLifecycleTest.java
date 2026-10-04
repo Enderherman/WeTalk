@@ -101,4 +101,29 @@ class ChannelLifecycleTest {
   assertTrue(query.getValue().getLastReceiveTime()>=before-Constants.MILLISECONDS_THREE_DAY);
   channel.finishAndReleaseAll();
  }
+  @Test void privateRemarkEventReachesOnlyOwnersDevices() {
+   EmbeddedChannel browser=new EmbeddedChannel(), desktop=new EmbeddedChannel(), peer=new EmbeddedChannel();
+   registerUserChannel("U100",browser);registerUserChannel("U100",desktop);registerUserChannel("U200",peer);
+   MessageSendDTO<java.util.Map<String,String>> event=new MessageSendDTO<>();
+   event.setMessageType(18);event.setContactId("U100");event.setExtentData(java.util.Map.of("contactId","U200","remark","Private label"));
+   context.sendMessage(event);
+   TextWebSocketFrame first=browser.readOutbound(), second=desktop.readOutbound();
+   assertNotNull(first);assertNotNull(second);assertNull(peer.readOutbound());
+   assertTrue(first.text().contains("Private label"));assertTrue(second.text().contains("Private label"));
+   first.release();second.release();browser.finishAndReleaseAll();desktop.finishAndReleaseAll();peer.finishAndReleaseAll();
+  }
+  @Test void initialSyncCarriesPrivateRemarkAlongsideRealContactName() {
+   UserInfo user=new UserInfo();user.setUserId("U100");user.setLastOffTime(1L);
+   when(users.selectByUserId("U100")).thenReturn(user);when(redis.getUserContactList("U100")).thenReturn(List.of());
+   var session=new top.enderherman.wetalk.entity.po.ChatSessionUser();
+   session.setUserId("U100");session.setContactId("U200");session.setContactName("Real Name");session.setRemark("Private label");
+   ChatSessionUserMapper sessions=mock(ChatSessionUserMapper.class);when(sessions.selectList(any())).thenReturn(List.of(session));
+   UserContactApplyMapper applications=mock(UserContactApplyMapper.class);when(applications.selectCount(any())).thenReturn(0);
+   when(messages.selectList(any())).thenReturn(List.of());
+   ReflectionTestUtils.setField(context,"chatSessionUserMapper",sessions);ReflectionTestUtils.setField(context,"userContactApplyMapper",applications);
+   EmbeddedChannel channel=new EmbeddedChannel();context.addContext("U100",channel);
+   TextWebSocketFrame frame=channel.readOutbound();
+   assertTrue(frame.text().contains("Private label"));assertTrue(frame.text().contains("Real Name"));
+   frame.release();channel.finishAndReleaseAll();
+  }
 }

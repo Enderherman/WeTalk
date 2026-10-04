@@ -3,6 +3,8 @@ package top.enderherman.wetalk.service.impl;
 import org.apache.commons.lang3.ArrayUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import top.enderherman.wetalk.common.ResponseCodeEnum;
 import top.enderherman.wetalk.component.RedisComponent;
 import top.enderherman.wetalk.constants.Constants;
@@ -209,6 +211,7 @@ public class UserContactServiceImpl implements UserContactService {
         resultVO.setContactType(typeEnum.toString());
         resultVO.setContactId(contactId);
         resultVO.setStatus(getContactSearchStatus(userId, contactId));
+        if (typeEnum == UserContactTypeEnum.USER) resultVO.setRemark(getContactRemark(userId, contactId));
         return resultVO;
     }
 
@@ -271,6 +274,7 @@ public class UserContactServiceImpl implements UserContactService {
         result.setContactId(userInfo.getUserId());
         result.setContactType(UserContactTypeEnum.USER.toString());
         result.setStatus(getContactSearchStatus(userId, userInfo.getUserId()));
+        result.setRemark(getContactRemark(userId, userInfo.getUserId()));
         return result;
     }
 
@@ -289,6 +293,50 @@ public class UserContactServiceImpl implements UserContactService {
         }
         UserContact userContact = userContactMapper.selectByUserIdAndContactId(userId, contactId);
         return userContact == null ? null : userContact.getStatus();
+    }
+
+    private String getContactRemark(String userId, String contactId) {
+        UserContact relationship = userContactMapper.selectByUserIdAndContactId(userId, contactId);
+        return relationship == null ? null : relationship.getRemark();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public java.util.Map<String, String> saveRemark(String userId, String contactId, String remark) {
+        if (userId == null || userId.equals(contactId)
+                || UserContactTypeEnum.getByPrefix(contactId) != UserContactTypeEnum.USER || remark == null) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
+        String normalized = remark.trim();
+        if (normalized.length() > 40) throw new BusinessException(ResponseCodeEnum.CODE_600);
+        UserContact own = userContactMapper.selectByUserIdAndContactId(userId, contactId);
+        UserContact peer = userContactMapper.selectByUserIdAndContactId(contactId, userId);
+        if (!isFriend(own) || !isFriend(peer) || !isSearchableUser(userInfoMapper.selectByUserId(contactId))) {
+            throw new BusinessException("只能为当前好友设置备注");
+        }
+        java.util.Map<String, String> result = java.util.Map.of("contactId", contactId, "remark", normalized);
+        if (normalized.equals(own.getRemark() == null ? "" : own.getRemark())) return result;
+        Integer updated = userContactMapper.updateRemark(userId, contactId, normalized.isEmpty() ? null : normalized);
+        if (updated == null || updated == 0) throw new BusinessException("好友关系已变化，请刷新后重试");
+        MessageSendDTO<java.util.Map<String, String>> event = new MessageSendDTO<>();
+        event.setMessageType(MessageTypeEnum.CONTACT_REMARK.getType());
+        event.setContactId(userId);
+        event.setContactType(UserContactTypeEnum.USER.getType());
+        event.setSendTime(System.currentTimeMillis());
+        event.setExtentData(result);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() { messageHandler.sendMessage(event); }
+            });
+        } else {
+            messageHandler.sendMessage(event);
+        }
+        return result;
+    }
+
+    private boolean isFriend(UserContact relationship) {
+        return relationship != null && UserContactStatusEnum.FRIEND.getStatus().equals(relationship.getStatus())
+                && UserContactTypeEnum.USER.getType().equals(relationship.getContactType());
     }
 
     /**

@@ -34,6 +34,9 @@ public class ChatSessionUser implements Serializable {
      */
     private String contactName;
 
+    /** 仅当前账号可见的好友备注，由联系人关系查询读取。 */
+    private String remark;
+
     /**
      * 最后消息
      */
