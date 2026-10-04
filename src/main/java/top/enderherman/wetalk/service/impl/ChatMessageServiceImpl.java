@@ -4,6 +4,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import top.enderherman.wetalk.common.ResponseCodeEnum;
@@ -40,6 +44,11 @@ import top.enderherman.wetalk.webSocket.MessageHandler;
 import jakarta.annotation.Resource;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.Locale;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
@@ -282,6 +291,13 @@ public class ChatMessageServiceImpl implements ChatMessageService {
      */
     @Override
     public MessageSendDTO<?> saveMessage(ChatMessage chatMessage, TokenUserInfoDto userInfoDto) {
+        if (MessageTypeEnum.MEDIA_CHAT.getType().equals(chatMessage.getMessageType())) {
+            validateAttachmentName(chatMessage.getFileName());
+            if (chatMessage.getFileSize() == null || chatMessage.getFileSize() <= 0
+                    || chatMessage.getFileType() == null || chatMessage.getFileType() < 0 || chatMessage.getFileType() > 2) {
+                throw new BusinessException(ResponseCodeEnum.CODE_600);
+            }
+        }
         //校验好友关系
         if (!Constants.ROBOT_UID.equals(userInfoDto.getUserId())) {
             List<String> userContactList = redisComponent.getUserContactList(userInfoDto.getUserId());
@@ -534,69 +550,115 @@ public class ChatMessageServiceImpl implements ChatMessageService {
      * 上传文件
      */
     @Override
+    @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
     public void saveMessageFile(String userId, Integer messageId, MultipartFile file, MultipartFile cover) {
-        ChatMessage chatMessage = chatMessageMapper.selectByMessageId(messageId);
-        if (chatMessage == null) {
+        if (userId == null || messageId == null || messageId < 1 || file == null || file.isEmpty()) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
-        if (!chatMessage.getSendUserId().equals(userId)) {
+        ChatMessage chatMessage = chatMessageMapper.selectByMessageIdForUpdate(messageId);
+        if (chatMessage == null || !userId.equals(chatMessage.getSendUserId())
+                || !MessageTypeEnum.MEDIA_CHAT.getType().equals(chatMessage.getMessageType())
+                || chatMessage.getSendTime() == null || chatMessage.getFileType() == null
+                || chatMessage.getFileType() < 0 || chatMessage.getFileType() > 2
+                || !(MessageStatusEnum.SENDING.getStatus().equals(chatMessage.getStatus())
+                || MessageStatusEnum.SENT.getStatus().equals(chatMessage.getStatus()))) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
-
+        requireUploadRelationship(userId, chatMessage.getContactId());
         SysSettingDto sysSettingDto = redisComponent.getSysSetting();
-        String fileSuffix = StringUtils.getFileSuffix(file.getOriginalFilename());
-        //校验文件夹大小
-        if (!StringUtils.isEmpty(fileSuffix) &&
-                ArrayUtils.contains(Constants.IMAGE_SUFFIX_LIST, fileSuffix.toLowerCase()) &&
-                file.getSize() > Constants.FILE_SIZE_MB * sysSettingDto.getMaxImageSize()) {
-            throw new BusinessException(ResponseCodeEnum.CODE_600);
-        } else if (!StringUtils.isEmpty(fileSuffix) &&
-                ArrayUtils.contains(Constants.VIDEO_SUFFIX_LIST, fileSuffix.toLowerCase()) &&
-                file.getSize() > Constants.FILE_SIZE_MB * sysSettingDto.getMaxVideoSize()) {
-            throw new BusinessException(ResponseCodeEnum.CODE_600);
-        } else if (!ArrayUtils.contains(Constants.IMAGE_SUFFIX_LIST, fileSuffix.toLowerCase()) &&
-                !ArrayUtils.contains(Constants.VIDEO_SUFFIX_LIST, fileSuffix.toLowerCase()) &&
-                file.getSize() > Constants.FILE_SIZE_MB * sysSettingDto.getMaxFileSize()) {
-            throw new BusinessException(ResponseCodeEnum.CODE_600);
-        }
-
-
         String fileName = file.getOriginalFilename();
-        if (fileName == null) {
-            throw new BusinessException(ResponseCodeEnum.CODE_600);
-        }
+        validateAttachmentName(fileName);
         String fileExtName = StringUtils.getFileSuffix(fileName);
         if (!fileExtName.isEmpty() && !fileExtName.matches("[.][a-zA-Z0-9]{1,16}")) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
+        long maxBytes = Constants.FILE_SIZE_MB * switch (chatMessage.getFileType()) {
+            case 0 -> sysSettingDto.getMaxImageSize();
+            case 1 -> sysSettingDto.getMaxVideoSize();
+            default -> sysSettingDto.getMaxFileSize();
+        };
+        String lowerSuffix = fileExtName.toLowerCase(Locale.ROOT);
+        if (ArrayUtils.contains(Constants.IMAGE_SUFFIX_LIST, lowerSuffix)) {
+            maxBytes = Math.min(maxBytes, Constants.FILE_SIZE_MB * sysSettingDto.getMaxImageSize());
+        } else if (ArrayUtils.contains(Constants.VIDEO_SUFFIX_LIST, lowerSuffix)) {
+            maxBytes = Math.min(maxBytes, Constants.FILE_SIZE_MB * sysSettingDto.getMaxVideoSize());
+        }
+        if (file.getSize() > maxBytes) throw new BusinessException(ResponseCodeEnum.CODE_600);
+        if (chatMessage.getFileType() == 0) ImageUploadValidator.validate(file, maxBytes);
         ImageUploadValidator.validate(cover, Constants.FILE_SIZE_MB * sysSettingDto.getMaxImageSize());
-        String fileRealName = messageId + fileExtName;
         String month = DateUtils.format(new Date(chatMessage.getSendTime()), DateTimePatternEnum.YYYY_MM.getPattern());
-        File folder = new File(appConfig.getProjectFolder() + Constants.FILE_FOLDER + month);
-        if (!folder.exists()) {
-            folder.mkdirs();
-        }
-        File uploadFile = new File(folder.getPath() + "/" + fileRealName);
+        Path folder = Path.of(appConfig.getProjectFolder(), Constants.FILE_FOLDER, month);
+        Path uploadFile = folder.resolve(messageId + fileExtName);
+        Path coverFile = folder.resolve(messageId + fileExtName + Constants.COVER_IMAGE_SUFFIX);
+        Path stagedFile = null;
+        Path stagedCover = null;
         try {
-            file.transferTo(uploadFile);
+            Files.createDirectories(folder);
+            stagedFile = Files.createTempFile(folder, "upload-", ".tmp");
+            file.transferTo(stagedFile);
             if (cover != null) {
-                cover.transferTo(new File(uploadFile.getPath() + Constants.COVER_IMAGE_SUFFIX));
+                stagedCover = Files.createTempFile(folder, "cover-", ".tmp");
+                cover.transferTo(stagedCover);
             }
-        } catch (Exception e) {
-            log.error("上传文件失败，", e);
+            if (MessageStatusEnum.SENT.getStatus().equals(chatMessage.getStatus())) {
+                // A retried request may have lost its successful response, but cannot replace published bytes.
+                if (!fileName.equals(chatMessage.getFileName()) || !Files.isRegularFile(uploadFile)
+                        || Files.mismatch(stagedFile, uploadFile) != -1
+                        || (stagedCover != null && (!Files.isRegularFile(coverFile) || Files.mismatch(stagedCover, coverFile) != -1))) {
+                    throw new BusinessException("文件已上传，不能替换已发送附件");
+                }
+                return;
+            }
+            Files.move(stagedFile, uploadFile, StandardCopyOption.REPLACE_EXISTING);
+            if (stagedCover != null) Files.move(stagedCover, coverFile, StandardCopyOption.REPLACE_EXISTING);
+            chatMessage.setStatus(MessageStatusEnum.SENT.getStatus());
+            chatMessage.setFileName(fileName);
+            chatMessage.setFileSize(file.getSize());
+            chatMessageMapper.updateByMessageId(chatMessage, messageId);
+        } catch (IOException error) {
+            log.warn("Message attachment storage failed; messageId={}", messageId);
             throw new BusinessException("文件上传失败");
+        } finally {
+            deleteTemporaryUpload(stagedFile);
+            deleteTemporaryUpload(stagedCover);
         }
-        chatMessage.setStatus(MessageStatusEnum.SENT.getStatus());
-        chatMessage.setFileName(fileName);
-        chatMessage.setFileSize(file.getSize());
-        chatMessageMapper.updateByMessageId(chatMessage, messageId);
-
         MessageSendDTO<?> messageSendDTO = new MessageSendDTO<>();
         messageSendDTO.setStatus(MessageStatusEnum.SENT.getStatus());
         messageSendDTO.setMessageId(messageId);
         messageSendDTO.setMessageType(MessageTypeEnum.FILE_UPLOAD.getType());
         messageSendDTO.setContactId(chatMessage.getContactId());
-        messageHandler.sendMessage(messageSendDTO);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() { messageHandler.sendMessage(messageSendDTO); }
+            });
+        } else messageHandler.sendMessage(messageSendDTO);
+    }
+
+    private void requireUploadRelationship(String userId, String contactId) {
+        UserContactTypeEnum type = UserContactTypeEnum.getByPrefix(contactId);
+        UserContact contact = userContactMapper.selectByUserIdAndContactId(userId, contactId);
+        if (type == null || contact == null || !UserContactStatusEnum.FRIEND.getStatus().equals(contact.getStatus())) {
+            throw new BusinessException(type == UserContactTypeEnum.GROUP ? ResponseCodeEnum.CODE_903 : ResponseCodeEnum.CODE_902);
+        }
+        if (type == UserContactTypeEnum.USER) {
+            UserContact reverse = userContactMapper.selectByUserIdAndContactId(contactId, userId);
+            if (reverse == null || !UserContactStatusEnum.FRIEND.getStatus().equals(reverse.getStatus())) {
+                throw new BusinessException(ResponseCodeEnum.CODE_902);
+            }
+        }
+    }
+
+    private void deleteTemporaryUpload(Path path) {
+        if (path == null) return;
+        try { Files.deleteIfExists(path); }
+        catch (IOException error) { log.warn("Could not remove an attachment staging file"); }
+    }
+
+    private void validateAttachmentName(String name) {
+        if (name == null || name.isBlank() || name.length() > 200
+                || name.equals(".") || name.equals("..") || name.matches(".*[\\\\/\\p{Cntrl}].*")) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
     }
 
     /**
@@ -608,7 +670,9 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
         ChatMessage message = chatMessageMapper.selectByMessageId(messageId.intValue());
-        if (message == null || message.getSendTime() == null) {
+        if (message == null || message.getSendTime() == null
+                || !MessageTypeEnum.MEDIA_CHAT.getType().equals(message.getMessageType())
+                || !MessageStatusEnum.SENT.getStatus().equals(message.getStatus())) {
             throw new BusinessException(ResponseCodeEnum.CODE_602);
         }
         UserContactTypeEnum type = UserContactTypeEnum.getByPrefix(message.getContactId());

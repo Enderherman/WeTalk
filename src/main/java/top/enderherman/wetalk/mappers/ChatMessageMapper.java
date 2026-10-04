@@ -24,6 +24,8 @@ public interface ChatMessageMapper<T,P> extends BaseMapper<T,P> {
 	 */
 	 T selectByMessageId(@Param("messageId") Integer messageId);
 
+     T selectByMessageIdForUpdate(@Param("messageId") Integer messageId);
+
 	/**
 	 * 根据发送者和客户端幂等键获取消息
 	 */

@@ -37,6 +37,7 @@ class ChatFileAccessTest {
   ReflectionTestUtils.setField(service,"appConfig",config);
   message=new ChatMessage(); message.setMessageId(12); message.setSendUserId("Usender");
   message.setContactId("Ureceiver"); message.setFileName("attachment.txt"); message.setSendTime(1700000000000L);
+  message.setMessageType(5); message.setStatus(1);
   when(messages.selectByMessageId(12)).thenReturn(message);
   Path file=data.resolve(Constants.FILE_FOLDER).resolve(DateUtils.format(new Date(message.getSendTime()),DateTimePatternEnum.YYYY_MM.getPattern())).resolve("12.txt");
   Files.createDirectories(file.getParent()); Files.writeString(file,"private");
@@ -61,7 +62,13 @@ class ChatFileAccessTest {
   message.setContactId("Ggroup"); when(contacts.selectCount(any())).thenReturn(1);
   assertEquals("12.txt",service.downloadFile(user("Umember"),12L,false).getName());
  }
- @Test void unsafeExtensionCannotEscapeStorage() {
+  @Test void pendingOrNonAttachmentMessagesCannotBeDownloaded() {
+   message.setStatus(0);
+   assertThrows(BusinessException.class,()->service.downloadFile(user("Usender"),12L,false));
+   message.setStatus(1); message.setMessageType(2);
+   assertThrows(BusinessException.class,()->service.downloadFile(user("Usender"),12L,false));
+  }
+  @Test void unsafeExtensionCannotEscapeStorage() {
   message.setFileName("x.txt/../../private");
   assertThrows(BusinessException.class,()->service.downloadFile(user("Ureceiver"),12L,false));
  }

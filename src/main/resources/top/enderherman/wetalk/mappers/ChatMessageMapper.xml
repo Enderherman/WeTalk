@@ -558,6 +558,11 @@
         from chat_message where message_id=#{messageId}
     </select>
 
+    <select id="selectByMessageIdForUpdate" resultMap="base_result_map">
+        select <include refid="base_column_list"/>
+        from chat_message where message_id=#{messageId} for update
+    </select>
+
     <select id="selectBySendUserIdAndClientMessageId" resultMap="base_result_map">
         select
         <include refid="base_column_list"/>
