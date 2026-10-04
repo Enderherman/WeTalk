@@ -9,6 +9,10 @@ import java.util.List;
  */
 public interface GroupInfoMapper<T,P> extends BaseMapper<T,P> {
 
+    T selectByGroupIdForUpdate(@Param("groupId") String groupId);
+
+    List<String> selectActiveOwnedGroupIdsForUpdate(@Param("userId") String userId);
+
 	/**
 	 * 根据GroupId更新
 	 */

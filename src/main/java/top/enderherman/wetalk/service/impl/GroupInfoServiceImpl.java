@@ -3,6 +3,7 @@ package top.enderherman.wetalk.service.impl;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
@@ -189,7 +190,7 @@ public class GroupInfoServiceImpl implements GroupInfoService {
      * 新增或修改群聊
      */
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
     public void saveGroup(GroupInfo groupInfo, MultipartFile avatarFile, MultipartFile avatarCover) {
         if (groupInfo.getGroupName() == null || groupInfo.getGroupName().isBlank()
                 || groupInfo.getGroupName().length() > 32
@@ -204,10 +205,11 @@ public class GroupInfoServiceImpl implements GroupInfoService {
         if (StringUtils.isEmpty(groupInfo.getGroupId())) {
 
             //1.1查询已有群组数量
-            GroupInfoQuery query = new GroupInfoQuery();
-            query.setGroupOwnId(groupInfo.getGroupOwnId());
-            query.setStatus(GroupStatusEnum.NORMAL.getStatus());
-            Integer count = groupInfoMapper.selectCount(query);
+            // 以账号行串行化建群；当前读避免 REPEATABLE_READ 旧快照绕过配额。
+            if (userInfoMapper.lockUserForGroupCreation(groupInfo.getGroupOwnId()) == null) {
+                throw new BusinessException(ResponseCodeEnum.CODE_600);
+            }
+            int count = groupInfoMapper.selectActiveOwnedGroupIdsForUpdate(groupInfo.getGroupOwnId()).size();
             groupInfo.setGroupId(StringUtils.getGroupId());
             SysSettingDto sysSettingDto = redisComponent.getSysSetting();
             if (count >= sysSettingDto.getMaxGroupCount()) {
@@ -276,7 +278,7 @@ public class GroupInfoServiceImpl implements GroupInfoService {
         }
         //2.修改
         else {
-            GroupInfo dbInfo = groupInfoMapper.selectByGroupId(groupInfo.getGroupId());
+            GroupInfo dbInfo = groupInfoMapper.selectByGroupIdForUpdate(groupInfo.getGroupId());
             if (dbInfo == null || !GroupStatusEnum.NORMAL.getStatus().equals(dbInfo.getStatus())
                     || !dbInfo.getGroupOwnId().equals(groupInfo.getGroupOwnId())) {
                 throw new BusinessException(ResponseCodeEnum.CODE_600);
@@ -326,7 +328,7 @@ public class GroupInfoServiceImpl implements GroupInfoService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void leaveGroup(String userId, String groupId, MessageTypeEnum messageTypeEnum) {
-        GroupInfo groupInfo = groupInfoMapper.selectByGroupId(groupId);
+        GroupInfo groupInfo = groupInfoMapper.selectByGroupIdForUpdate(groupId);
         if (groupInfo == null || !GroupStatusEnum.NORMAL.getStatus().equals(groupInfo.getStatus())) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
@@ -389,7 +391,7 @@ public class GroupInfoServiceImpl implements GroupInfoService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void dissolutionGroup(String groupOwnerId, String groupId) {
-        GroupInfo dbInfo = groupInfoMapper.selectByGroupId(groupId);
+        GroupInfo dbInfo = groupInfoMapper.selectByGroupIdForUpdate(groupId);
         if (dbInfo == null || !GroupStatusEnum.NORMAL.getStatus().equals(dbInfo.getStatus())
                 || !dbInfo.getGroupOwnId().equals(groupOwnerId)) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
@@ -450,7 +452,7 @@ public class GroupInfoServiceImpl implements GroupInfoService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void addOrRemoveGroupUser(TokenUserInfoDto tokenUserInfoDto, String groupId, String contactIds, Integer opType) {
-        GroupInfo dbInfo = groupInfoMapper.selectByGroupId(groupId);
+        GroupInfo dbInfo = groupInfoMapper.selectByGroupIdForUpdate(groupId);
         if (dbInfo == null || !GroupStatusEnum.NORMAL.getStatus().equals(dbInfo.getStatus())
                 || !dbInfo.getGroupOwnId().equals(tokenUserInfoDto.getUserId())
                 || (!Constants.ZERO.equals(opType) && !Constants.ONE.equals(opType))

@@ -3,6 +3,10 @@
     "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="top.enderherman.wetalk.mappers.UserInfoMapper">
 
+    <select id="lockUserForGroupCreation" resultType="java.lang.Integer">
+        SELECT 1 FROM user_info WHERE user_id = #{userId} FOR UPDATE
+    </select>
+
 	<!--实体映射-->
 	<resultMap id="base_result_map" type="top.enderherman.wetalk.entity.po.UserInfo">
 		<!--用户id-->

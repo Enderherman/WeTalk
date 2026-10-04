@@ -3,6 +3,14 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="top.enderherman.wetalk.mappers.GroupInfoMapper">
 
+    <select id="selectByGroupIdForUpdate" resultMap="base_result_map">
+        SELECT * FROM group_info WHERE group_id = #{groupId} FOR UPDATE
+    </select>
+
+    <select id="selectActiveOwnedGroupIdsForUpdate" resultType="java.lang.String">
+        SELECT group_id FROM group_info WHERE group_own_id = #{userId} AND status = 1 FOR UPDATE
+    </select>
+
     <!--实体映射-->
     <resultMap id="base_result_map" type="top.enderherman.wetalk.entity.po.GroupInfo">
         <!--群组id-->

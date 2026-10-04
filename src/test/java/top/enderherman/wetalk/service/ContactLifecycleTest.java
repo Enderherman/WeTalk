@@ -158,6 +158,7 @@ class ContactLifecycleTest {
         GroupInfo dissolved = new GroupInfo();
         dissolved.setStatus(0);
         when(groups.selectByGroupId("G300")).thenReturn(dissolved);
+        when(groups.selectByGroupIdForUpdate("G300")).thenReturn(dissolved);
         assertThrows(BusinessException.class, () -> service.addContact("U100", "U200", "G300", 1, "join"));
         assertTrue(relationships.isEmpty());
         verifyNoInteractions(messages, notifications);

@@ -55,6 +55,12 @@ class GroupMemberQuotaTest {
         group.setGroupName("Study Group");
         group.setStatus(1);
         when(groupInfoMapper.selectByGroupId("G300")).thenReturn(group);
+        when(groupInfoMapper.selectByGroupIdForUpdate("G300")).thenReturn(group);
+        UserContact owner = new UserContact();
+        owner.setUserId("U100");
+        UserContact existing = new UserContact();
+        existing.setUserId("U201");
+        when(userContactMapper.selectActiveGroupMembersForUpdate("G300")).thenReturn(java.util.List.of(owner, existing));
         UserInfo member = new UserInfo();
         member.setNickName("Member");
         member.setStatus(1);
@@ -88,5 +94,25 @@ class GroupMemberQuotaTest {
                 "U200", null, "G300", UserContactTypeEnum.GROUP.getType(), "joined the group"));
 
         verify(userContactMapper, never()).insertOrUpdateBatch(any());
+    }
+
+    @Test
+    void lockingMembershipReadRejectsCapacityEvenWhenEarlierSnapshotCountWasEmpty() {
+        SysSettingDto settings = new SysSettingDto();
+        settings.setMaxGroupMemberCount(2);
+        when(redisComponent.getSysSetting()).thenReturn(settings);
+        when(userContactMapper.selectCount(any(UserContactQuery.class))).thenReturn(0);
+        assertThrows(BusinessException.class, () -> service.addContact("U200", null, "G300", 1, "joined"));
+        verify(userContactMapper, never()).insertOrUpdateBatch(any());
+    }
+
+    @Test
+    void currentMembershipReadSuppressesConcurrentDuplicateJoin() {
+        UserContact alreadyJoined = new UserContact();
+        alreadyJoined.setUserId("U200");
+        when(userContactMapper.selectActiveGroupMembersForUpdate("G300")).thenReturn(java.util.List.of(alreadyJoined));
+        service.addContact("U200", null, "G300", 1, "joined");
+        verify(userContactMapper, never()).insertOrUpdateBatch(any());
+        verifyNoInteractions(chatMessageMapper, chatSessionUserMapper);
     }
 }

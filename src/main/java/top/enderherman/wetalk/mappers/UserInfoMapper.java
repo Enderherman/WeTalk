@@ -9,6 +9,8 @@ import java.util.List;
  */
 public interface UserInfoMapper<T,P> extends BaseMapper<T,P> {
 
+    Integer lockUserForGroupCreation(@Param("userId") String userId);
+
 	/**
 	 * 根据UserId更新
 	 */

@@ -57,7 +57,7 @@ class GroupSessionLifecycleTest {
         group.setGroupId("G300");
         group.setStatus(1);
         group.setGroupOwnId("U100");
-        when(groupInfoMapper.selectByGroupId("G300")).thenReturn(group);
+        when(groupInfoMapper.selectByGroupIdForUpdate("G300")).thenReturn(group);
         when(userContactMapper.deleteByUserIdAndContactId("U200", "G300")).thenReturn(1);
         when(userContactMapper.selectCount(any(UserContactQuery.class))).thenReturn(1);
         UserInfo user = new UserInfo();
@@ -76,7 +76,7 @@ class GroupSessionLifecycleTest {
         group.setGroupId("G300");
         group.setGroupOwnId("U100");
         group.setStatus(1);
-        when(groupInfoMapper.selectByGroupId("G300")).thenReturn(group);
+        when(groupInfoMapper.selectByGroupIdForUpdate("G300")).thenReturn(group);
         when(userContactMapper.deleteByUserIdAndContactId("U200", "G300")).thenReturn(1);
         UserInfo user = new UserInfo();
         user.setNickName("Member");
@@ -98,7 +98,7 @@ class GroupSessionLifecycleTest {
         group.setGroupId("G300");
         group.setStatus(1);
         group.setGroupOwnId("U100");
-        when(groupInfoMapper.selectByGroupId("G300")).thenReturn(group);
+        when(groupInfoMapper.selectByGroupIdForUpdate("G300")).thenReturn(group);
         when(userContactMapper.selectList(any(UserContactQuery.class))).thenReturn(java.util.List.of());
 
         service.dissolutionGroup("U100", "G300");

@@ -449,13 +449,17 @@ public class UserContactServiceImpl implements UserContactService {
         UserInfo applicant = userInfoMapper.selectByUserId(applyUserId);
         if (!isSearchableUser(applicant)) throw new BusinessException("联系人不存在或已停用");
         UserContact existing = userContactMapper.selectByUserIdAndContactId(applyUserId, contactId);
+        int currentGroupMemberCount = 0;
         if (groupContact) {
-            GroupInfo group = groupInfoMapper.selectByGroupId(contactId);
+            GroupInfo group = groupInfoMapper.selectByGroupIdForUpdate(contactId);
             if (group == null || !GroupStatusEnum.NORMAL.getStatus().equals(group.getStatus())
                     || (receiveUserId != null && !receiveUserId.equals(group.getGroupOwnId()))) {
                 throw new BusinessException("群聊不存在或已解散");
             }
-            if (existing != null && UserContactStatusEnum.FRIEND.getStatus().equals(existing.getStatus())) return;
+            // 当前读与群行锁覆盖直接加入、申请批准和群主邀请，防止并发超员/重复入群。
+            List<UserContact> members = userContactMapper.selectActiveGroupMembersForUpdate(contactId);
+            if (members.stream().anyMatch(member -> applyUserId.equals(member.getUserId()))) return;
+            currentGroupMemberCount = members.size();
         } else {
             UserInfo recipient = userInfoMapper.selectByUserId(contactId);
             if (!contactId.equals(receiveUserId) || !isSearchableUser(recipient)) {
@@ -473,12 +477,8 @@ public class UserContactServiceImpl implements UserContactService {
         }
         //群聊人数
         if (UserContactTypeEnum.GROUP.getType().equals(contactType)) {
-            UserContactQuery query = new UserContactQuery();
-            query.setContactId(contactId);
-            query.setStatus(UserContactStatusEnum.FRIEND.getStatus());
-            Integer count = userContactMapper.selectCount(query);
             SysSettingDto sysSettingDto = redisComponent.getSysSetting();
-            if (count >= sysSettingDto.getMaxGroupMemberCount()) {
+            if (currentGroupMemberCount >= sysSettingDto.getMaxGroupMemberCount()) {
                 throw new BusinessException("成员已满");
             }
         }

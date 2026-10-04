@@ -71,6 +71,9 @@ class GroupSafetyTest {
         group.setStatus(1);
         group.setJoinType(1);
         when(groups.selectByGroupId("G300")).thenReturn(group);
+        when(groups.selectByGroupIdForUpdate("G300")).thenReturn(group);
+        when(users.lockUserForGroupCreation("U100")).thenReturn(1);
+        when(groups.selectActiveOwnedGroupIdsForUpdate("U100")).thenReturn(java.util.List.of());
         when(contacts.selectCount(any())).thenReturn(1);
     }
 
@@ -169,6 +172,16 @@ class GroupSafetyTest {
         group.setGroupId(null);
         service.saveGroup(group, new MockMultipartFile("avatarFile", "avatar.png", "image/png", png), null);
         verify(groups).insert(group);
+    }
+
+    @Test
+    void creationUsesCurrentOwnedGroupsAfterLockEvenIfEarlierCountWasEmpty() {
+        when(groups.selectCount(any())).thenReturn(0);
+        when(groups.selectActiveOwnedGroupIdsForUpdate("U100")).thenReturn(java.util.List.of("G200"));
+        group.setGroupId(null);
+        assertThrows(BusinessException.class, () -> service.saveGroup(group, new MockMultipartFile("avatarFile", "avatar.png", "image/png", png), null));
+        verify(users).lockUserForGroupCreation("U100");
+        verify(groups, never()).insert(any());
     }
 
     @Test
