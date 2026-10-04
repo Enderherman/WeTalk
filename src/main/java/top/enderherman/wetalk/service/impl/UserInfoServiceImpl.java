@@ -300,13 +300,26 @@ public class UserInfoServiceImpl implements UserInfoService {
      */
     @Override
     public void updateUserInfo(UserInfo userInfo, MultipartFile avatarFile, MultipartFile avatarCoverFile) throws IOException {
-        //防止注入
-        userInfo.setEmail(null);
-        userInfo.setPassword(null);
-        userInfo.setStatus(null);
-        userInfo.setCreateTime(null);
-        userInfo.setLastLoginTime(null);
-        userInfo.setLastOffTime(null);
+        // 仅复制可编辑资料字段；内部状态字段不能通过表单批量绑定修改。
+        UserInfo update = new UserInfo();
+        update.setUserId(userInfo.getUserId());
+        update.setNickName(userInfo.getNickName());
+        update.setJoinType(userInfo.getJoinType());
+        update.setSex(userInfo.getSex());
+        update.setPersonalSignature(userInfo.getPersonalSignature());
+        update.setAreaName(userInfo.getAreaName());
+        update.setAreaCode(userInfo.getAreaCode());
+        userInfo = update;
+        if ((userInfo.getNickName() != null && (userInfo.getNickName().isBlank() || userInfo.getNickName().length() > 40))
+                || (userInfo.getJoinType() != null && JoinTypeEnum.getByType(userInfo.getJoinType()) == null)
+                || (userInfo.getSex() != null && userInfo.getSex() != 0 && userInfo.getSex() != 1)
+                || (userInfo.getPersonalSignature() != null && userInfo.getPersonalSignature().length() > 64)
+                || (userInfo.getAreaName() != null && userInfo.getAreaName().length() > 64)
+                || (userInfo.getAreaCode() != null && userInfo.getAreaCode().length() > 64)) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
+        UserInfo dbInfo = userInfoMapper.selectByUserId(userInfo.getUserId());
+        if (dbInfo == null) throw new BusinessException(ResponseCodeEnum.CODE_404);
         ImageUploadValidator.validate(avatarFile);
         ImageUploadValidator.validate(avatarCoverFile);
         if (avatarFile != null || avatarCoverFile != null) {
@@ -322,7 +335,6 @@ public class UserInfoServiceImpl implements UserInfoService {
             }
         }
 
-        UserInfo dbInfo = userInfoMapper.selectByUserId(userInfo.getUserId());
         userInfoMapper.updateByUserId(userInfo, userInfo.getUserId());
         //更新会话昵称
         String contactNameUpdate = null;
