@@ -1,3 +1,9 @@
+## SMTP 连接和读写超时（2026-10-04）
+
+- SMTP 与 SMTPS 均设置连接 5 秒、读取 10 秒、写入 10 秒超时，可由 `MAIL_CONNECTION_TIMEOUT` / `MAIL_READ_TIMEOUT` / `MAIL_WRITE_TIMEOUT` 覆盖，防止无响应邮件服务器无限占用注册请求。
+- `MAIL_DEBUG` 映射到 JavaMail 实际使用的 `mail.debug`，默认保持关闭。
+- 验证：实际加载 application.yml 与 Spring Boot Mail 自动配置的 2 项测试验证双协议默认值及环境覆盖；全量 Maven clean verify 通过。
+
 ## 版本发布并发一致性（2026-10-04）
 
 - 新增 SQL 007：发布目录单例行锁与版本唯一索引。新增、修改、发布、撤回及删除共用跨实例事务锁，锁后读取当前状态，避免并发重复版本或把已发布记录当成草稿修改/删除。

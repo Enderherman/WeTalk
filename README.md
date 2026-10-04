@@ -123,6 +123,7 @@ Spring Boot 不会自动读取本地 .env；本地直接运行 Java 时要由终
 | WETALK_EMAIL_ENABLED | `false`；设置 `true` 启用注册邮箱验证码 |
 | MAIL_HOST / MAIL_PORT / MAIL_USERNAME / MAIL_PASSWORD / MAIL_PROTOCOL | SMTP 配置；QQ 邮箱使用 `smtp.qq.com`、`465`、`smtps`，账号口令只放入私有 `.env` |
 | MAIL_DEBUG | `false`；保持关闭，避免邮件认证信息和内容进入日志 |
+| MAIL_CONNECTION_TIMEOUT / MAIL_READ_TIMEOUT / MAIL_WRITE_TIMEOUT | SMTP/SMTPS 连接、读取和写入超时，单位毫秒；默认 5000 / 10000 / 10000，避免邮件提供方无响应时请求长期挂起 |
 
 启用 AI 需同时设置 WETALK_AI_ENABLED=true 和 WETALK_AI_MODEL=openai，再填写 model、base URL、API Key。DeepSeek 当前 OpenAI 兼容配置为 `https://api.deepseek.com` 和 `deepseek-flash`。普通聊天部署保持 false/none。此行为通过 Spring AI 自动配置测试验证，不使用伪造 API Key。
 

@@ -12,13 +12,20 @@ spring:
     protocol: ${MAIL_PROTOCOL:smtps}
     properties:
       mail:
+        debug: ${MAIL_DEBUG:false}
+        smtp:
+          connectiontimeout: ${MAIL_CONNECTION_TIMEOUT:5000}
+          timeout: ${MAIL_READ_TIMEOUT:10000}
+          writetimeout: ${MAIL_WRITE_TIMEOUT:10000}
         smtps:
+          connectiontimeout: ${MAIL_CONNECTION_TIMEOUT:5000}
+          timeout: ${MAIL_READ_TIMEOUT:10000}
+          writetimeout: ${MAIL_WRITE_TIMEOUT:10000}
           auth: true
           ssl:
             enable: true
           socketFactory:
             class: javax.net.ssl.SSLSocketFactory
-          debug: ${MAIL_DEBUG:false}
   main:
     headless: true
   mvc:
