@@ -19,7 +19,7 @@ services:
       - "${NAS_BIND_IP:-127.0.0.1}:${MYSQL_PUBLISHED_PORT:-13306}:3306"
     volumes:
       - ./data/mysql:/var/lib/mysql
-      - ./sql:/docker-entrypoint-initdb.d:ro
+      - ./sql/001-schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_0900_ai_ci

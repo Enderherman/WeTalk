@@ -153,7 +153,7 @@ sudo docker compose -f compose.infra.yaml up -d
 sudo docker compose -f compose.infra.yaml ps
 ~~~
 
-默认 NAS 侧端口为 MySQL 13306、Redis 16379，以避开现有服务；实际启动前仍需核对端口。两者启用认证和持久化，MySQL 首次启动自动导入 sql/001-schema.sql。不要通过清空 data/mysql 重跑初始化；已有数据目录的升级需专门迁移脚本。
+默认 NAS 侧端口为 MySQL 13306、Redis 16379，以避开现有服务；实际启动前仍需核对端口。两者启用认证和持久化，MySQL 首次启动只挂载并导入最新 sql/001-schema.sql，不会自动执行用于已有数据库的 002 及后续升级脚本。不要通过清空 data/mysql 重跑初始化；已有数据目录的升级需专门迁移脚本。
 
 生成配置拒绝覆盖已有 .env/secrets/config，避免意外轮换凭据。Redis 配置文件必须由容器 UID/GID 999 读取；父目录和 .env 保持私有权限。同一 Docker 网络中的后端使用 `wetalk-mysql:3306` 和 `wetalk-redis:6379`。默认宿主机映射只监听 127.0.0.1；需要远程开发直连时再单独评估 LAN 发布和防火墙。
 
